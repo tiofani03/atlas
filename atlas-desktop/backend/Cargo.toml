@@ -1,0 +1,22 @@
+[package]
+name = "atlas-desktop-backend"
+version = "0.1.0"
+edition = "2021"
+authors = ["Atlas Contributors"]
+description = "Lightweight Axum REST server for Atlas Desktop"
+
+[[bin]]
+name = "atlas-desktop-backend"
+path = "src/main.rs"
+
+[dependencies]
+atlas-core = { path = "../../atlas-core" }
+axum = "0.7"
+tokio = { version = "1.38", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }

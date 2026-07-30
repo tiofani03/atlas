@@ -1,0 +1,24 @@
+[package]
+name = "atlas-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Atlas Contributors"]
+description = "Core engine for Atlas Engineering Knowledge Engine"
+
+[dependencies]
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+async-trait = "0.1"
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+tempfile = "3.10"

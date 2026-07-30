@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "atlas-core",
+    "atx",
+    "atlas-desktop/backend"
+]
+resolver = "2"
