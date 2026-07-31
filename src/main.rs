@@ -177,6 +177,7 @@ async fn main() -> Result<()> {
                             api_token_env: token_env,
                             projects: project_list,
                             spaces: Vec::new(),
+                            repos: Vec::new(),
                         },
                     );
 

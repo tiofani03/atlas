@@ -1,6 +1,7 @@
 use crate::state::AppState;
 use atlas_core::{
-    ConfluenceConnector, ConnectorConfig, ConnectorInstance, JiraConnector, SyncEngine,
+    ConfluenceConnector, ConnectorConfig, ConnectorInstance, GithubConnector, JiraConnector,
+    SyncEngine,
 };
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::Utc;
@@ -65,6 +66,7 @@ pub async fn trigger_sync(
                 let conn_instance = match connector_cfg.provider.as_str() {
                     "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
                     "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
+                    "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
                     _ => continue,
                 };
 

@@ -1,3 +1,4 @@
+use crate::domain::KnowledgeArtifact;
 use crate::storage::Storage;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -90,20 +91,43 @@ async fn handle_request(
             "tools": [
                 {
                     "name": "atx_search",
-                    "description": "Perform full-text BM25 search across unified engineering knowledge with optional filters",
+                    "description": "Perform full-text BM25 search across unified engineering context graph with optional filters",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query": { "type": "string", "description": "Search query terms" },
-                            "object_type": { "type": "string", "description": "Optional type filter: ticket, document, specification" },
+                            "kind": { "type": "string", "description": "Optional artifact kind filter (e.g., repository, issue, pull_request, commit, release, ticket, document)" },
                             "tag": { "type": "string", "description": "Optional tag filter" },
+                            "repository": { "type": "string", "description": "Optional repository filter (e.g. owner/repo)" },
                             "limit": { "type": "integer", "description": "Max results to return (default 10)" }
                         }
                     }
                 },
                 {
+                    "name": "atx_artifact",
+                    "description": "Get detailed canonical information for a specific artifact by ID or source_id",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string", "description": "Artifact ID or source_id (e.g., octocat/hello-world#42 or commit SHA)" }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "atx_related",
+                    "description": "Get connected engineering graph artifacts for a given artifact ID or source_id",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string", "description": "Artifact ID or source_id" }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "atx_status",
-                    "description": "Get current status and statistics of local Atlas database",
+                    "description": "Get current status and statistics of local Atlas context graph",
                     "inputSchema": {
                         "type": "object",
                         "properties": {}
@@ -119,8 +143,13 @@ async fn handle_request(
             match name {
                 "atx_search" | "atlas_search" | "atlas_query" => {
                     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                    let object_type = args.get("object_type").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let kind = args
+                        .get("kind")
+                        .or_else(|| args.get("object_type"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                     let tag = args.get("tag").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let repository = args.get("repository").and_then(|v| v.as_str()).map(|s| s.to_string());
                     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
                     let storage_clone = storage.clone();
@@ -128,12 +157,24 @@ async fn handle_request(
 
                     let results = tokio::task::spawn_blocking(move || {
                         if !query_owned.is_empty() {
-                            storage_clone.search_fts(&query_owned, limit)
+                            storage_clone.search_fts(
+                                &query_owned,
+                                kind.as_deref(),
+                                tag.as_deref(),
+                                repository.as_deref(),
+                                limit,
+                            )
                         } else {
-                            storage_clone.query_structured(object_type.as_deref(), tag.as_deref(), limit)
+                            storage_clone.query_structured(
+                                kind.as_deref(),
+                                tag.as_deref(),
+                                repository.as_deref(),
+                                limit,
+                            )
                         }
                     })
                     .await??;
+
 
                     let formatted = format_results_as_markdown(&results);
 
@@ -146,13 +187,60 @@ async fn handle_request(
                         ]
                     }))
                 }
+                "atx_artifact" => {
+                    let id_param = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let storage_clone = storage.clone();
+
+                    let artifact = tokio::task::spawn_blocking(move || {
+                        storage_clone.get_artifact_by_id(&id_param)
+                    })
+                    .await??;
+
+                    let text = match artifact {
+                        Some(art) => format_results_as_markdown(&[art]),
+                        None => format!("Artifact with ID '{}' not found.", args.get("id").and_then(|v| v.as_str()).unwrap_or("")),
+                    };
+
+                    Ok(json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": text
+                            }
+                        ]
+                    }))
+                }
+                "atx_related" => {
+                    let id_param = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let storage_clone = storage.clone();
+
+                    let related = tokio::task::spawn_blocking(move || {
+                        storage_clone.get_related_artifacts(&id_param)
+                    })
+                    .await??;
+
+                    let mut out = String::new();
+                    out.push_str(&format!("Found {} related artifact(s):\n\n", related.len()));
+                    for (rel, art) in related {
+                        out.push_str(&format!("- [{}] -> [{}] {}\n  (ID: {})\n", rel.relationship_type, art.kind.to_string().to_uppercase(), art.title, art.source_id));
+                    }
+
+                    Ok(json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": out
+                            }
+                        ]
+                    }))
+                }
                 "atx_status" | "atlas_status" => {
                     let storage_clone = storage.clone();
                     let stats = tokio::task::spawn_blocking(move || storage_clone.get_stats()).await??;
 
                     let summary = format!(
-                        "### Atlas Storage Status\n- **Total Knowledge Objects**: {}\n- **Connectors Synced**: {}\n- **Database File Size**: {:.2} MB",
-                        stats.total_objects,
+                        "### Atlas Engineering Context Graph Status\n- **Total Artifacts**: {}\n- **Connectors Synced**: {}\n- **Database File Size**: {:.2} MB",
+                        stats.total_artifacts,
                         stats.connectors_count,
                         stats.db_size_bytes as f64 / (1024.0 * 1024.0)
                     );
@@ -173,38 +261,50 @@ async fn handle_request(
     }
 }
 
-fn format_results_as_markdown(objects: &[crate::domain::KnowledgeObject]) -> String {
-    if objects.is_empty() {
-        return "No matching engineering knowledge objects found.".to_string();
+fn format_results_as_markdown(artifacts: &[KnowledgeArtifact]) -> String {
+    if artifacts.is_empty() {
+        return "No matching engineering artifacts found.".to_string();
     }
 
     let mut out = String::new();
-    out.push_str(&format!("Found {} matching object(s):\n\n", objects.len()));
+    out.push_str(&format!("Found {} matching artifact(s):\n\n", artifacts.len()));
 
-    for (idx, obj) in objects.iter().enumerate() {
+    for (idx, art) in artifacts.iter().enumerate() {
         out.push_str(&format!(
             "### {}. [{}] {}\n",
             idx + 1,
-            obj.object_type.to_string().to_uppercase(),
-            obj.title
+            art.kind.to_string().to_uppercase(),
+            art.title
         ));
-        out.push_str(&format!("- **ID**: `{}`\n", obj.id));
-        out.push_str(&format!("- **Source**: [{}]({})\n", obj.source.original_id, obj.source.web_url));
-        if let Some(ref sum) = obj.summary {
+        out.push_str(&format!("- **ID**: `{}`\n", art.id));
+        out.push_str(&format!("- **Source**: [{}]({})\n", art.source_id, art.source_url));
+        if let Some(ref repo) = art.repository {
+            out.push_str(&format!("- **Repository**: {}\n", repo));
+        }
+        if let Some(ref sum) = art.summary {
             out.push_str(&format!("- **Summary**: {}\n", sum));
         }
-        if !obj.tags.is_empty() {
-            out.push_str(&format!("- **Tags**: {}\n", obj.tags.join(", ")));
+        if !art.tags.is_empty() {
+            out.push_str(&format!("- **Tags**: {}\n", art.tags.join(", ")));
         }
-        out.push_str("\n**Content**:\n");
-        let content_snippet = if obj.content.len() > 500 {
-            format!("{}...", &obj.content[..500])
+        if !art.relationships.is_empty() {
+            let rel_strs: Vec<String> = art
+                .relationships
+                .iter()
+                .map(|r| format!("{} {}", r.relationship_type, r.target_id))
+                .collect();
+            out.push_str(&format!("- **Relationships**: {}\n", rel_strs.join("; ")));
+        }
+        out.push_str("\n**Body**:\n");
+        let body_snippet = if art.body.len() > 500 {
+            format!("{}...", &art.body[..500])
         } else {
-            obj.content.clone()
+            art.body.clone()
         };
-        out.push_str(&content_snippet);
+        out.push_str(&body_snippet);
         out.push_str("\n\n---\n\n");
     }
 
     out
 }
+

@@ -29,32 +29,32 @@ impl SyncEngine {
                 .unwrap_or(None)
         };
 
-        let objects = connector
+        let artifacts = connector
             .fetch_modified(last_sync)
             .await
             .with_context(|| format!("Error fetching items for connector '{}'", connector_id))?;
 
         let mut summary = SyncSummary {
             connector_id: connector_id.clone(),
-            fetched: objects.len(),
+            fetched: artifacts.len(),
             ..Default::default()
         };
 
         let now = Utc::now();
 
-        for obj in objects {
-            let existing_checksum = storage.get_existing_checksum(&obj.id)?;
+        for artifact in artifacts {
+            let existing_checksum = storage.get_existing_checksum(&artifact.id)?;
 
             match existing_checksum {
-                Some(ref cs) if cs == &obj.checksum => {
+                Some(ref cs) if cs == &artifact.checksum => {
                     summary.skipped += 1;
                 }
                 Some(_) => {
-                    storage.upsert_object(&obj)?;
+                    storage.upsert_artifact(&artifact)?;
                     summary.updated += 1;
                 }
                 None => {
-                    storage.upsert_object(&obj)?;
+                    storage.upsert_artifact(&artifact)?;
                     summary.inserted += 1;
                 }
             }
@@ -71,3 +71,4 @@ impl SyncEngine {
         Ok(summary)
     }
 }
+

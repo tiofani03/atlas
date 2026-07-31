@@ -11,37 +11,37 @@ export const ArtifactViewerPage: React.FC = () => {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div>
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-bold text-zinc-100 tracking-tight">Artifact Relationship Visualizer</h2>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-800/40 text-indigo-300 font-mono">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100 tracking-tight">Artifact Relationship Visualizer</h2>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/40 text-indigo-700 dark:text-indigo-300 font-mono font-medium">
             Feature Flag Enabled
           </span>
         </div>
-        <p className="text-xs text-zinc-400 mt-1">
+        <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
           Read-only visualizer tracking knowledge lineage: Epic → Specification → Story → Task → PR → Release.
         </p>
       </div>
 
-      <div className="glass-panel p-6 rounded-xl border border-zinc-800 space-y-6">
-        <h3 className="text-sm font-bold text-zinc-200 flex items-center gap-2">
-          <Network className="w-4 h-4 text-indigo-400" />
+      <div className="glass-panel p-6 rounded-xl border border-slate-200 dark:border-zinc-800 space-y-6 shadow-xs">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-200 flex items-center gap-2">
+          <Network className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           <span>Knowledge Dependency Trace</span>
         </h3>
 
-        <div className="flex flex-col md:flex-row items-center gap-3 overflow-x-auto p-4 bg-zinc-950/80 rounded-xl border border-zinc-800/80">
+        <div className="flex flex-col md:flex-row items-center gap-3 overflow-x-auto p-4 bg-slate-50 dark:bg-zinc-950/80 rounded-xl border border-slate-200 dark:border-zinc-800/80">
           {sampleTrace.map((item, idx) => (
             <React.Fragment key={idx}>
-              <div className="glass-card p-4 rounded-xl space-y-1.5 min-w-[200px] border border-zinc-800 shrink-0">
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-800/40 text-indigo-300 font-bold">
+              <div className="glass-card p-4 rounded-xl space-y-1.5 min-w-[200px] border border-slate-200 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900 shadow-xs">
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/40 text-indigo-700 dark:text-indigo-300 font-bold">
                   {item.type}
                 </span>
-                <h4 className="text-xs font-bold text-zinc-100 mt-1 truncate">{item.title}</h4>
-                <p className="text-[10px] text-zinc-500 font-mono">{item.provider}</p>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-1 truncate">{item.title}</h4>
+                <p className="text-[10px] text-slate-500 dark:text-zinc-500 font-mono">{item.provider}</p>
               </div>
               {idx < sampleTrace.length - 1 && (
-                <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0 hidden md:block" />
+                <ArrowRight className="w-4 h-4 text-slate-400 dark:text-zinc-600 shrink-0 hidden md:block" />
               )}
             </React.Fragment>
           ))}

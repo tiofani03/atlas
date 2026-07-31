@@ -34,7 +34,7 @@ fn default_log_level() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectorConfig {
-    pub provider: String, // "jira" or "confluence"
+    pub provider: String, // "jira", "confluence", or "github"
     pub instance_url: String,
     pub email: String,
     pub api_token: Option<String>,
@@ -43,6 +43,8 @@ pub struct ConnectorConfig {
     pub projects: Vec<String>,
     #[serde(default)]
     pub spaces: Vec<String>,
+    #[serde(default)]
+    pub repos: Vec<String>,
 }
 
 impl ConnectorConfig {

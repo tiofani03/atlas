@@ -2,18 +2,20 @@ export interface StatusInfo {
   version: string;
   config_path: string;
   db_path: string;
-  total_objects: number;
+  total_artifacts?: number;
+  total_objects?: number;
   connectors_count: number;
   db_size_bytes: number;
 }
 
 export interface ConnectorInfo {
   id: string;
-  provider: 'jira' | 'confluence' | 'github' | 'markdown';
+  provider: 'jira' | 'confluence' | 'github' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'notion' | 'gitlab' | 'bitbucket';
   instance_url: string;
   email: string;
   projects: string[];
   spaces: string[];
+  repos: string[];
   last_synced_at: string | null;
 }
 
@@ -28,7 +30,8 @@ export interface SyncProgressInfo {
   last_completed_at: string | null;
 }
 
-export interface Relationship {
+export interface ArtifactRelationship {
+  source_id: string;
   target_id: string;
   relationship_type: string;
 }
@@ -40,20 +43,30 @@ export interface SourceInfo {
   web_url: string;
 }
 
-export interface KnowledgeObject {
+export interface KnowledgeArtifact {
   id: string;
-  object_type: 'ticket' | 'document' | 'specification' | 'design' | 'component';
+  kind?: string;
+  object_type?: string;
   title: string;
   summary?: string | null;
-  content: string;
+  body?: string;
+  content?: string;
+  provider?: string;
+  source_id?: string;
+  source_url?: string;
+  repository?: string | null;
   tags: string[];
-  relationships: Relationship[];
-  source: SourceInfo;
-  source_metadata: Record<string, unknown>;
+  relationships: ArtifactRelationship[];
+  source?: SourceInfo;
+  source_metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  created_at?: string | null;
   updated_at: string;
   synced_at: string;
   checksum: string;
 }
+
+export type KnowledgeObject = KnowledgeArtifact;
 
 export interface JiraConfigPayload {
   id: string;
@@ -70,3 +83,11 @@ export interface ConfluenceConfigPayload {
   api_token?: string;
   spaces?: string[];
 }
+
+export interface GithubConfigPayload {
+  id: string;
+  instance_url?: string;
+  api_token?: string;
+  repos?: string[];
+}
+

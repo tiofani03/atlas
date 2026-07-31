@@ -1,6 +1,6 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
-use crate::domain::{KnowledgeObject, ObjectType, SourceInfo};
+use crate::domain::{ArtifactKind, KnowledgeArtifact};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
@@ -62,7 +62,7 @@ impl Connector for ConfluenceConnector {
         "confluence"
     }
 
-    async fn fetch_modified(&self, _since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeObject>> {
+    async fn fetch_modified(&self, _since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let base_url = self.config.instance_url.trim_end_matches('/');
         let url = format!("{}/wiki/api/v2/pages", base_url);
 
@@ -100,7 +100,6 @@ impl Connector for ConfluenceConnector {
             let count = pages.len();
             all_pages.extend(pages);
 
-            // Extract next cursor from _links.next
             let next_link = json.get("_links").and_then(|l| l.get("next")).and_then(|v| v.as_str());
             if let Some(link) = next_link {
                 if let Some(cursor_idx) = link.find("cursor=") {
@@ -151,7 +150,7 @@ impl Connector for ConfluenceConnector {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            let content = Self::strip_html_tags(html_body);
+            let body = Self::strip_html_tags(html_body);
 
             let web_url = page
                 .get("_links")
@@ -165,38 +164,38 @@ impl Connector for ConfluenceConnector {
 
             let updated_at = now;
 
-            let id = KnowledgeObject::generate_id("confluence", &self.config.instance_url, &page_id);
-            let checksum = KnowledgeObject::compute_checksum(
+            let id = KnowledgeArtifact::generate_id("confluence", &self.config.instance_url, &page_id);
+            let checksum = KnowledgeArtifact::compute_checksum(
                 &title,
                 Some(&format!("Space: {}", space_id)),
-                &content,
+                &body,
                 &tags,
             );
 
-            objects.push(KnowledgeObject {
+            objects.push(KnowledgeArtifact {
                 id,
-                object_type: ObjectType::Document,
+                kind: ArtifactKind::Document,
                 title,
                 summary: Some(format!("Space: {}", space_id)),
-                content,
+                body,
+                provider: "confluence".to_string(),
+                source_id: page_id,
+                source_url: web_url,
+                repository: None,
                 tags,
                 relationships: Vec::new(),
-                source: SourceInfo {
-                    provider: "confluence".to_string(),
-                    instance_url: self.config.instance_url.clone(),
-                    original_id: page_id,
-                    web_url,
-                },
-                source_metadata: page.clone(),
+                created_at: None,
                 updated_at,
                 synced_at: now,
                 checksum,
+                metadata: page.clone(),
             });
         }
 
         Ok(objects)
     }
 }
+
 
 fn base64_encode(input: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

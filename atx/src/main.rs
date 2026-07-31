@@ -1,7 +1,9 @@
+mod formatter;
+
 use anyhow::Result;
 use atlas_core::{
-    ConfluenceConnector, Config, Connector, ConnectorConfig, ConnectorInstance, JiraConnector,
-    KnowledgeObject, Storage, SyncEngine,
+    ConfluenceConnector, Config, Connector, ConnectorConfig, ConnectorInstance, GithubConnector,
+    JiraConnector, Storage, SyncEngine,
 };
 use clap::{Parser, Subcommand};
 
@@ -10,7 +12,7 @@ use clap::{Parser, Subcommand};
     name = "atx",
     author = "Atlas Contributors",
     version,
-    about = "Unified Engineering Knowledge Layer (Atlas)"
+    about = "Unified Engineering Knowledge & Context Engine (Atlas)"
 )]
 struct Cli {
     /// Path to config file [default: ~/.config/atlas/config.toml]
@@ -32,7 +34,7 @@ enum Commands {
         action: ConfigSubcommands,
     },
 
-    /// Synchronize knowledge from external connectors into local database
+    /// Synchronize knowledge from external connectors into local context graph
     Sync {
         /// Optional connector ID to sync specifically
         #[arg(short, long)]
@@ -43,19 +45,23 @@ enum Commands {
         full: bool,
     },
 
-    /// Search engineering knowledge using BM25 full-text search or metadata filters
+    /// Search engineering context graph using BM25 full-text search or metadata filters
     Search {
         /// Optional search query terms
         #[arg(default_value = "")]
         query: String,
 
-        /// Filter by object type (e.g. ticket, document, specification)
+        /// Filter by artifact kind (e.g. repository, issue, pull_request, commit, release, ticket, document)
         #[arg(short, long)]
-        object_type: Option<String>,
+        kind: Option<String>,
 
         /// Filter by tag
         #[arg(short, long)]
         tag: Option<String>,
+
+        /// Filter by repository (e.g. owner/repo)
+        #[arg(short, long)]
+        repository: Option<String>,
 
         /// Maximum results to return
         #[arg(short, long, default_value_t = 10)]
@@ -64,9 +70,93 @@ enum Commands {
         /// Output results as JSON
         #[arg(long)]
         json: bool,
+
+        /// Verbose output (show complete relationship details and disable truncation)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output raw unformatted database records
+        #[arg(long)]
+        raw: bool,
     },
 
-    /// Show storage statistics and connector status
+    /// Show detailed canonical engineering artifact by ID or source_id
+    Artifact {
+        /// Artifact ID or source_id (e.g., INIT-219, owner/repo#42, owner/repo@sha)
+        id: String,
+
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Verbose output (disable description truncation)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output raw unformatted database record
+        #[arg(long)]
+        raw: bool,
+    },
+
+    /// Show connected relationship graph for a given artifact
+    Related {
+        /// Artifact ID or source_id
+        id: String,
+
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Verbose output (disable relationship item truncation)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output raw unformatted database records
+        #[arg(long)]
+        raw: bool,
+    },
+
+    /// Build and display an Engineering Context Package for an artifact
+    Context {
+        /// Artifact ID or source_id (e.g., INIT-219)
+        id: String,
+
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Verbose output (disable item list truncation)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output raw unformatted database records
+        #[arg(long)]
+        raw: bool,
+    },
+
+    /// Query engineering artifacts belonging to a specific repository
+    Repository {
+        /// Repository identifier (e.g. owner/repo)
+        repo: String,
+
+        /// Maximum results to return
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output raw unformatted database records
+        #[arg(long)]
+        raw: bool,
+    },
+
+    /// Show storage statistics, connector status, and graph size
     Status,
 
     /// Run stdio Model Context Protocol (MCP) Server for AI tools
@@ -117,6 +207,24 @@ enum ConfigSubcommands {
         #[arg(long)]
         spaces: Option<String>,
     },
+    /// Configure GitHub connector
+    Github {
+        /// Connector ID (e.g. "github-main")
+        #[arg(default_value = "github-main")]
+        id: String,
+        /// GitHub API Base URL [default: https://api.github.com]
+        #[arg(long, default_value = "https://api.github.com")]
+        url: String,
+        /// Personal Access Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing Personal Access Token
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Comma-separated repositories (e.g. "owner/repo1,owner/repo2")
+        #[arg(long)]
+        repos: String,
+    },
 }
 
 #[tokio::main]
@@ -130,7 +238,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init => {
-            println!("Initializing Atlas...");
+            println!("Initializing Atlas Context Engine...");
             let cfg = Config::load_from_path(&config_path)?;
             cfg.save_to_path(&config_path)?;
 
@@ -168,6 +276,7 @@ async fn main() -> Result<()> {
                             api_token_env: token_env,
                             projects: project_list,
                             spaces: Vec::new(),
+                            repos: Vec::new(),
                         },
                     );
 
@@ -197,11 +306,43 @@ async fn main() -> Result<()> {
                             api_token_env: token_env,
                             projects: Vec::new(),
                             spaces: space_list,
+                            repos: Vec::new(),
                         },
                     );
 
                     cfg.save_to_path(&config_path)?;
                     println!("Confluence connector '{}' configured successfully!", id);
+                }
+
+                ConfigSubcommands::Github {
+                    id,
+                    url,
+                    token,
+                    token_env,
+                    repos,
+                } => {
+                    let repo_list = repos
+                        .split(',')
+                        .map(|r| r.trim().to_string())
+                        .filter(|r| !r.is_empty())
+                        .collect();
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "github".to_string(),
+                            instance_url: url,
+                            email: String::new(),
+                            api_token: token,
+                            api_token_env: token_env,
+                            projects: Vec::new(),
+                            spaces: Vec::new(),
+                            repos: repo_list,
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("GitHub connector '{}' configured successfully!", id);
                 }
             }
         }
@@ -229,12 +370,13 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
-            println!("Starting Atlas synchronization...\n");
+            println!("Starting Atlas context engine synchronization...\n");
 
             for (id, connector_cfg) in target_connectors {
                 let conn_instance = match connector_cfg.provider.as_str() {
                     "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
                     "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
+                    "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
                     other => {
                         println!("Skipping unknown provider '{}' for ID '{}'", other, id);
                         continue;
@@ -262,24 +404,149 @@ async fn main() -> Result<()> {
 
         Commands::Search {
             query,
-            object_type,
+            kind,
             tag,
+            repository,
             limit,
             json,
+            verbose,
+            raw,
         } => {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
             let results = if !query.is_empty() {
-                storage.search_fts(&query, limit)?
+                storage.search_fts(
+                    &query,
+                    kind.as_deref(),
+                    tag.as_deref(),
+                    repository.as_deref(),
+                    limit,
+                )?
             } else {
-                storage.query_structured(object_type.as_deref(), tag.as_deref(), limit)?
+                storage.query_structured(
+                    kind.as_deref(),
+                    tag.as_deref(),
+                    repository.as_deref(),
+                    limit,
+                )?
             };
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&results)?);
             } else {
-                print_cli_results(&results);
+                println!(
+                    "{}",
+                    formatter::format_search_results(&results, Some(&storage), verbose, raw)
+                );
+            }
+        }
+
+        Commands::Artifact {
+            id,
+            json,
+            verbose,
+            raw,
+        } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+
+            match storage.get_artifact_by_id(&id)? {
+                Some(artifact) => {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&artifact)?);
+                    } else {
+                        println!(
+                            "{}",
+                            formatter::format_artifact_detail(&artifact, Some(&storage), verbose, raw)
+                        );
+                    }
+                }
+                None => {
+                    println!("Artifact '{}' not found.", id);
+                }
+            }
+        }
+
+        Commands::Related {
+            id,
+            json,
+            verbose,
+            raw,
+        } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+
+            let key_artifact = storage.get_artifact_by_id(&id).ok().flatten();
+            let related = storage.get_related_artifacts(&id)?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&related)?);
+            } else {
+                println!(
+                    "{}",
+                    formatter::format_related_results(
+                        &id,
+                        key_artifact.as_ref(),
+                        &related,
+                        verbose,
+                        raw
+                    )
+                );
+            }
+        }
+
+        Commands::Context {
+            id,
+            json,
+            verbose,
+            raw,
+        } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+
+            match storage.get_artifact_by_id(&id)? {
+                Some(artifact) => {
+                    let related = storage.get_related_artifacts(&id).unwrap_or_default();
+
+                    if json {
+                        let payload = serde_json::json!({
+                            "artifact": artifact,
+                            "related": related
+                        });
+                        println!("{}", serde_json::to_string_pretty(&payload)?);
+                    } else {
+                        println!(
+                            "{}",
+                            formatter::format_context_package(&artifact, &related, verbose, raw)
+                        );
+                    }
+                }
+                None => {
+                    println!("Artifact '{}' not found.", id);
+                }
+            }
+        }
+
+        Commands::Repository {
+            repo,
+            limit,
+            json,
+            verbose,
+            raw,
+        } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+
+            let artifacts = storage.query_by_repository(&repo, limit)?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&artifacts)?);
+            } else {
+                println!(
+                    "{}",
+                    formatter::format_search_results(&artifacts, Some(&storage), verbose, raw)
+                );
             }
         }
 
@@ -290,12 +557,12 @@ async fn main() -> Result<()> {
 
             let stats = storage.get_stats()?;
 
-            println!("=== Atlas Engineering Knowledge Status ===");
-            println!("Config Path:        {:?}", config_path);
-            println!("Database Path:      {:?}", db_path);
-            println!("Total Objects:      {}", stats.total_objects);
+            println!("=== Atlas Unified Engineering Context Graph ===");
+            println!("Config Path:           {:?}", config_path);
+            println!("Database Path:         {:?}", db_path);
+            println!("Total Artifacts:       {}", stats.total_artifacts);
             println!("Configured Connectors: {}", cfg.connectors.len());
-            println!("Database Size:      {:.2} MB", stats.db_size_bytes as f64 / (1024.0 * 1024.0));
+            println!("Database Size:         {:.2} MB", stats.db_size_bytes as f64 / (1024.0 * 1024.0));
             println!("\nConnectors:");
 
             for (id, conn_cfg) in &cfg.connectors {
@@ -317,31 +584,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn print_cli_results(objects: &[KnowledgeObject]) {
-    if objects.is_empty() {
-        println!("No matching knowledge objects found.");
-        return;
-    }
-
-    println!("Found {} results:\n", objects.len());
-
-    for (i, obj) in objects.iter().enumerate() {
-        println!(
-            "{}. [{}] {}",
-            i + 1,
-            obj.object_type.to_string().to_uppercase(),
-            obj.title
-        );
-        println!("   ID:     {}", obj.id);
-        println!("   Source: {} ({})", obj.source.original_id, obj.source.web_url);
-        if let Some(ref s) = obj.summary {
-            println!("   Summary: {}", s);
-        }
-        if !obj.tags.is_empty() {
-            println!("   Tags:   {}", obj.tags.join(", "));
-        }
-        println!();
-    }
 }
