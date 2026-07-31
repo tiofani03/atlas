@@ -24,6 +24,7 @@ import {
   Search,
   Layers,
   Lock,
+  HardDrive,
 } from 'lucide-react';
 
 interface ConnectorCardProps {
@@ -81,7 +82,7 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({
 }) => {
   return (
     <div
-      className={`group relative bg-white dark:bg-zinc-900/90 rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between space-y-4 ${
+      className={`group relative bg-white dark:bg-zinc-900/90 rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between space-y-4 min-h-[220px] h-full ${
         !isAvailable
           ? 'opacity-60 grayscale-[25%] blur-[0.4px] border-slate-200/80 dark:border-zinc-800/60 pointer-events-none select-none'
           : isConfigured
@@ -395,11 +396,22 @@ export const ConnectorsPage: React.FC = () => {
               </h3>
             </div>
             <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 px-2.5 py-0.5 rounded-full font-mono font-semibold">
-              4 Providers
+              5 Providers
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Local Git Repo */}
+            <ConnectorCard
+              name="Local Git Repository"
+              subtitle="Disk .git & Local Logs"
+              description="Sub-second local disk parsing for 100k+ commits, diffs, and local branch history."
+              icon={<HardDrive className="w-5 h-5" />}
+              iconBgClass="bg-emerald-50 dark:bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30"
+              isAvailable={false}
+              tag={{ label: 'v0.3 Local Engine', color: 'emerald' }}
+            />
+
             {/* GitHub Card */}
             <ConnectorCard
               name="GitHub"
@@ -476,7 +488,7 @@ export const ConnectorsPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Slack */}
             <ConnectorCard
               name="Slack Threads"
@@ -595,16 +607,33 @@ export const ConnectorsPage: React.FC = () => {
         isOpen={isJiraOpen}
         onClose={() => setIsJiraOpen(false)}
         onSuccess={() => refetch()}
+        initialConfig={jiraConfig ? {
+          id: jiraConfig.id,
+          instance_url: jiraConfig.instance_url,
+          email: jiraConfig.email,
+          projects: jiraConfig.projects,
+        } : undefined}
       />
       <ConfigureConfluenceModal
         isOpen={isConfluenceOpen}
         onClose={() => setIsConfluenceOpen(false)}
         onSuccess={() => refetch()}
+        initialConfig={confluenceConfig ? {
+          id: confluenceConfig.id,
+          instance_url: confluenceConfig.instance_url,
+          email: confluenceConfig.email,
+          spaces: confluenceConfig.spaces,
+        } : undefined}
       />
       <ConfigureGithubModal
         isOpen={isGithubOpen}
         onClose={() => setIsGithubOpen(false)}
         onSuccess={() => refetch()}
+        initialConfig={githubConfig ? {
+          id: githubConfig.id,
+          instance_url: githubConfig.instance_url,
+          repos: githubConfig.repos,
+        } : undefined}
       />
     </div>
   );

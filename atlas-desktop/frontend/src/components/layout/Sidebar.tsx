@@ -6,12 +6,11 @@ import {
   RefreshCw,
   Settings,
   Info,
-  Box,
   MessageSquareCode,
   Network,
 } from 'lucide-react';
 
-import atlasLogo from '../../assets/logo.jpg';
+import atlasLogo from '../../assets/logo.svg';
 
 interface SidebarProps {
   currentTab: string;

@@ -6,14 +6,20 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialConfig?: {
+    id: string;
+    instance_url: string;
+    email: string;
+    spaces: string[];
+  };
 }
 
-export const ConfigureConfluenceModal: React.FC<ModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [id, setId] = useState('confluence-docs');
-  const [instanceUrl, setInstanceUrl] = useState('https://company.atlassian.net');
-  const [email, setEmail] = useState('');
+export const ConfigureConfluenceModal: React.FC<ModalProps> = ({ isOpen, onClose, onSuccess, initialConfig }) => {
+  const [id, setId] = useState(initialConfig?.id || 'confluence-docs');
+  const [instanceUrl, setInstanceUrl] = useState(initialConfig?.instance_url || 'https://company.atlassian.net');
+  const [email, setEmail] = useState(initialConfig?.email || '');
   const [apiToken, setApiToken] = useState('');
-  const [spaces, setSpaces] = useState('ENG, ARCH');
+  const [spaces, setSpaces] = useState(initialConfig?.spaces?.join(', ') || 'ENG, ARCH');
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,7 +53,7 @@ export const ConfigureConfluenceModal: React.FC<ModalProps> = ({ isOpen, onClose
         id,
         instance_url: instanceUrl,
         email,
-        api_token: apiToken,
+        api_token: apiToken || undefined,
         spaces: spaceArray,
       });
       onSuccess();
@@ -111,13 +117,15 @@ export const ConfigureConfluenceModal: React.FC<ModalProps> = ({ isOpen, onClose
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">API Token</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">
+              API Token {initialConfig && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">(Saved — leave empty to keep unchanged)</span>}
+            </label>
             <input
               type="password"
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
-              placeholder="Atlassian API Token"
-              required
+              placeholder={initialConfig ? '•••••••• (Token Saved)' : 'Atlassian API Token'}
+              required={!initialConfig}
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
             />
           </div>

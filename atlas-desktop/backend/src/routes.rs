@@ -14,6 +14,9 @@ pub fn create_router(state: AppState) -> Router {
 
     Router::new()
         .route("/api/status", get(status::get_status))
+        .route("/api/storage/clear", post(status::clear_data))
+        .route("/api/clear", post(status::clear_data))
+        .route("/api/data/clear", post(status::clear_data))
         .route("/api/connectors", get(connectors::list_connectors))
         .route("/api/connectors/jira", post(connectors::save_jira_connector))
         .route(
@@ -32,6 +35,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/sync/status", get(sync::get_sync_status))
         .route("/api/search", get(search::search_objects))
         .route("/api/objects/:id", get(search::get_object_by_id))
+        .route("/api/context/:id", get(search::get_context))
         .layer(cors)
         .with_state(state)
 }

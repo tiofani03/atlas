@@ -307,7 +307,7 @@ impl Connector for GithubConnector {
                     });
                 }
 
-                if len < per_page {
+                if len < per_page || (since.is_none() && page >= 5) {
                     break;
                 }
                 page += 1;
@@ -422,14 +422,15 @@ impl Connector for GithubConnector {
                         updated_at,
                         synced_at: Utc::now(),
                         checksum,
-                        metadata: item,
+                        metadata: item.clone(),
                     });
 
                     // ---------------------------------------------------------
-                    // 3b. Pull Request Reviews
+                    // 3b. Pull Request Reviews (Only for open or recent PRs to avoid HTTP sub-request explosion)
                     // ---------------------------------------------------------
-                    let reviews_url = format!("{}/repos/{}/pulls/{}/reviews", base_url, repo_name, number);
-                    if let Ok(r_resp) = self.client.get(&reviews_url).send().await {
+                    if state == "open" || pr_page == 1 {
+                        let reviews_url = format!("{}/repos/{}/pulls/{}/reviews", base_url, repo_name, number);
+                        if let Ok(r_resp) = self.client.get(&reviews_url).send().await {
                         if r_resp.status().is_success() {
                             if let Ok(reviews) = r_resp.json::<Vec<Value>>().await {
                                 for rev in reviews {
@@ -493,8 +494,9 @@ impl Connector for GithubConnector {
                         }
                     }
                 }
+                }
 
-                if reached_watermark || len < per_page {
+                if reached_watermark || len < per_page || (since.is_none() && pr_page >= 5) {
                     break;
                 }
                 pr_page += 1;
@@ -598,7 +600,7 @@ impl Connector for GithubConnector {
                     });
                 }
 
-                if len < per_page {
+                if len < per_page || (since.is_none() && comment_page >= 3) {
                     break;
                 }
                 comment_page += 1;
@@ -702,7 +704,7 @@ impl Connector for GithubConnector {
                     });
                 }
 
-                if len < per_page {
+                if len < per_page || (since.is_none() && commit_page >= 5) {
                     break;
                 }
                 commit_page += 1;

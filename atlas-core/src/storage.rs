@@ -127,25 +127,41 @@ impl Storage {
                 tokenize = 'porter unicode61'
             );
 
+            DROP TRIGGER IF EXISTS ka_ad;
+            DROP TRIGGER IF EXISTS ka_au;
+
             CREATE TRIGGER IF NOT EXISTS ka_ai AFTER INSERT ON knowledge_artifacts BEGIN
                 INSERT INTO knowledge_fts(id, title, summary, body, tags, repository, kind, provider, source_id)
                 VALUES (new.id, new.title, COALESCE(new.summary, ''), new.body, new.tags, COALESCE(new.repository, ''), new.kind, new.provider, new.source_id);
             END;
 
-            CREATE TRIGGER IF NOT EXISTS ka_ad AFTER DELETE ON knowledge_artifacts BEGIN
-                INSERT INTO knowledge_fts(knowledge_fts, id, title, summary, body, tags, repository, kind, provider, source_id)
-                VALUES ('delete', old.id, old.title, COALESCE(old.summary, ''), old.body, old.tags, COALESCE(old.repository, ''), old.kind, old.provider, old.source_id);
+            CREATE TRIGGER ka_ad AFTER DELETE ON knowledge_artifacts BEGIN
+                DELETE FROM knowledge_fts WHERE id = old.id;
             END;
 
-            CREATE TRIGGER IF NOT EXISTS ka_au AFTER UPDATE ON knowledge_artifacts BEGIN
-                INSERT INTO knowledge_fts(knowledge_fts, id, title, summary, body, tags, repository, kind, provider, source_id)
-                VALUES ('delete', old.id, old.title, COALESCE(old.summary, ''), old.body, old.tags, COALESCE(old.repository, ''), old.kind, old.provider, old.source_id);
+            CREATE TRIGGER ka_au AFTER UPDATE ON knowledge_artifacts BEGIN
+                DELETE FROM knowledge_fts WHERE id = old.id;
                 INSERT INTO knowledge_fts(id, title, summary, body, tags, repository, kind, provider, source_id)
                 VALUES (new.id, new.title, COALESCE(new.summary, ''), new.body, new.tags, COALESCE(new.repository, ''), new.kind, new.provider, new.source_id);
             END;
             ",
         )?;
 
+        Ok(())
+    }
+
+    pub fn clear_all_data(&self) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS knowledge_objects;
+             DELETE FROM knowledge_artifacts;
+             DELETE FROM artifact_relationships;
+             DELETE FROM connectors_state;
+             DELETE FROM knowledge_fts;
+             PRAGMA wal_checkpoint(TRUNCATE);
+             VACUUM;
+             PRAGMA wal_checkpoint(TRUNCATE);",
+        )?;
         Ok(())
     }
 
@@ -486,7 +502,15 @@ impl Storage {
             |row| row.get(0),
         )?;
 
-        let db_size_bytes = fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        let mut db_size_bytes = fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        let wal_path = self.path.with_extension("db-wal");
+        if let Ok(m) = fs::metadata(&wal_path) {
+            db_size_bytes += m.len();
+        }
+        let shm_path = self.path.with_extension("db-shm");
+        if let Ok(m) = fs::metadata(&shm_path) {
+            db_size_bytes += m.len();
+        }
 
         Ok(StorageStats {
             total_artifacts,

@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas - Engineering Knowledge Platform | Logo Design Concepts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-slate: #0B0F19;
+      --card-bg: #111827;
+      --border-color: #1F2937;
+      --text-main: #F9FAFB;
+      --text-muted: #9CA3AF;
+      --primary-navy: #0F172A;
+      --electric-blue: #3B82F6;
+      --teal: #14B8A6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-slate);
+      color: var(--text-main);
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.35rem 0.85rem;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: var(--electric-blue);
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #FFFFFF 0%, #94A3B8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1.15rem;
+      max-width: 800px;
+      margin: 0 auto 1.5rem auto;
+    }
+
+    .palette {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .swatch {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--card-bg);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .color-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2rem;
+      margin-bottom: 3rem;
+    }
+
+    @media (max-width: 1024px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .option-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #FFF;
+    }
+
+    .recommendation-tag {
+      background: #10B981;
+      color: #042F2E;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+
+    .preview-box {
+      background: #FFFFFF;
+      border-radius: 12px;
+      height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.03);
+    }
+
+    .preview-box.dark-bg {
+      background: #0F172A;
+    }
+
+    .preview-box.grid-bg {
+      background-color: #F8FAFC;
+      background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
+      background-size: 16px 16px;
+    }
+
+    .preview-box svg {
+      width: 200px;
+      height: 200px;
+    }
+
+    .size-test-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      background: #F1F5F9;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid #E2E8F0;
+    }
+
+    .size-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .size-label {
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: #64748B;
+      font-weight: 600;
+    }
+
+    .symbolic-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .tag {
+      background: #1F2937;
+      color: var(--text-muted);
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+
+    .tag.highlight {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60A5FA;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .description {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: auto;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 0.65rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--electric-blue);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #2563EB;
+    }
+
+    .btn-secondary {
+      background: #1E293B;
+      color: #E2E8F0;
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: #334155;
+    }
+
+    .summary-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2.5rem;
+      margin-top: 2rem;
+    }
+
+    .summary-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      color: #FFF;
+    }
+
+    .criteria-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .criteria-grid { grid-template-columns: 1fr; }
+    }
+
+    .crit-box {
+      background: #1E293B;
+      padding: 1.25rem;
+      border-radius: 10px;
+      border: 1px solid #334155;
+    }
+
+    .crit-box h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--electric-blue);
+      margin-bottom: 0.5rem;
+    }
+
+    .crit-box p {
+      font-size: 0.88rem;
+      color: #94A3B8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Atlas Brand Identity System</div>
+      <h1>Atlas Logo Design Proposals</h1>
+      <p class="subtitle">Engineering Knowledge Platform linking repos, docs, APIs, issues, and artifacts into a unified knowledge graph.</p>
+      
+      <div class="palette">
+        <div class="swatch">
+          <div class="color-dot" style="background: #0F172A;"></div>
+          <span>Primary: #0F172A (Deep Navy)</span>
+        </div>
+        <div class="swatch">
+          <div class="color-dot" style="background: #3B82F6;"></div>
+          <span>Accent: #3B82F6 (Electric Blue)</span>
+        </div>
+        <div class="swatch">
+          <div class="color-dot" style="background: #14B8A6;"></div>
+          <span>Accent: #14B8A6 (Teal)</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      
+      <!-- OPTION 1 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="option-title">Option 1: The Compass Graph</div>
+            <p style="font-size: 0.85rem; color: var(--electric-blue); font-weight: 600;">Primary Recommendation</p>
+          </div>
+          <div class="recommendation-tag">Top Pick</div>
+        </div>
+
+        <div class="preview-box grid-bg" id="preview-opt1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="208" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="124" stroke="#3B82F6" stroke-width="12" stroke-dasharray="8 6" fill="none" opacity="0.9"/>
+<line x1="256" y1="48" x2="256" y2="464" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="464" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="343.68" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="168.32" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="343.68" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="168.32" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<polygon points="343.68,168.32 343.68,343.68 168.32,343.68 168.32,168.32" stroke="#14B8A6" stroke-width="10" fill="none" stroke-linejoin="round"/>
+<circle cx="343.68" cy="168.32" r="14" fill="#14B8A6"/>
+<circle cx="168.32" cy="168.32" r="14" fill="#14B8A6"/>
+<circle cx="168.32" cy="343.68" r="14" fill="#14B8A6"/>
+<circle cx="343.68" cy="343.68" r="14" fill="#14B8A6"/>
+<circle cx="256" cy="48" r="18" fill="#3B82F6"/>
+<circle cx="464" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="464" r="18" fill="#3B82F6"/>
+<circle cx="48" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="26" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#3B82F6"/>
+</svg>
+        </div>
+
+        <div>
+          <div class="size-label" style="margin-bottom: 0.5rem;">SCALE LEGIBILITY TEST</div>
+          <div class="size-test-bar">
+            <div class="size-item">
+              <div style="width: 16px; height: 16px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="208" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="124" stroke="#0F172A" stroke-width="12" stroke-dasharray="8 6" fill="none" opacity="0.9"/>
+<line x1="256" y1="48" x2="256" y2="464" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="464" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="343.68" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="168.32" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="343.68" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="168.32" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<polygon points="343.68,168.32 343.68,343.68 168.32,343.68 168.32,168.32" stroke="#0F172A" stroke-width="10" fill="none" stroke-linejoin="round"/>
+<circle cx="343.68" cy="168.32" r="14" fill="#0F172A"/>
+<circle cx="168.32" cy="168.32" r="14" fill="#0F172A"/>
+<circle cx="168.32" cy="343.68" r="14" fill="#0F172A"/>
+<circle cx="343.68" cy="343.68" r="14" fill="#0F172A"/>
+<circle cx="256" cy="48" r="18" fill="#0F172A"/>
+<circle cx="464" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="464" r="18" fill="#0F172A"/>
+<circle cx="48" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="256" r="26" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">16x16</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 32px; height: 32px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="208" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="124" stroke="#0F172A" stroke-width="12" stroke-dasharray="8 6" fill="none" opacity="0.9"/>
+<line x1="256" y1="48" x2="256" y2="464" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="464" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="343.68" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="168.32" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="343.68" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="168.32" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="168.32" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="343.68" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<polygon points="343.68,168.32 343.68,343.68 168.32,343.68 168.32,168.32" stroke="#0F172A" stroke-width="10" fill="none" stroke-linejoin="round"/>
+<circle cx="343.68" cy="168.32" r="14" fill="#0F172A"/>
+<circle cx="168.32" cy="168.32" r="14" fill="#0F172A"/>
+<circle cx="168.32" cy="343.68" r="14" fill="#0F172A"/>
+<circle cx="343.68" cy="343.68" r="14" fill="#0F172A"/>
+<circle cx="256" cy="48" r="18" fill="#0F172A"/>
+<circle cx="464" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="464" r="18" fill="#0F172A"/>
+<circle cx="48" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="256" r="26" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">32x32</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 64px; height: 64px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="208" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="124" stroke="#3B82F6" stroke-width="12" stroke-dasharray="8 6" fill="none" opacity="0.9"/>
+<line x1="256" y1="48" x2="256" y2="464" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="464" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="343.68" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="168.32" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="343.68" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="168.32" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<polygon points="343.68,168.32 343.68,343.68 168.32,343.68 168.32,168.32" stroke="#14B8A6" stroke-width="10" fill="none" stroke-linejoin="round"/>
+<circle cx="343.68" cy="168.32" r="14" fill="#14B8A6"/>
+<circle cx="168.32" cy="168.32" r="14" fill="#14B8A6"/>
+<circle cx="168.32" cy="343.68" r="14" fill="#14B8A6"/>
+<circle cx="343.68" cy="343.68" r="14" fill="#14B8A6"/>
+<circle cx="256" cy="48" r="18" fill="#3B82F6"/>
+<circle cx="464" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="464" r="18" fill="#3B82F6"/>
+<circle cx="48" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="26" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#3B82F6"/>
+</svg></div>
+              <span class="size-label">64x64</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 128px; height: 128px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="208" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="124" stroke="#3B82F6" stroke-width="12" stroke-dasharray="8 6" fill="none" opacity="0.9"/>
+<line x1="256" y1="48" x2="256" y2="464" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="464" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="343.68" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="48" x2="168.32" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="464" y1="256" x2="343.68" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="343.68" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="256" y1="464" x2="168.32" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="168.32" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="48" y1="256" x2="168.32" y2="343.68" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<polygon points="343.68,168.32 343.68,343.68 168.32,343.68 168.32,168.32" stroke="#14B8A6" stroke-width="10" fill="none" stroke-linejoin="round"/>
+<circle cx="343.68" cy="168.32" r="14" fill="#14B8A6"/>
+<circle cx="168.32" cy="168.32" r="14" fill="#14B8A6"/>
+<circle cx="168.32" cy="343.68" r="14" fill="#14B8A6"/>
+<circle cx="343.68" cy="343.68" r="14" fill="#14B8A6"/>
+<circle cx="256" cy="48" r="18" fill="#3B82F6"/>
+<circle cx="464" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="464" r="18" fill="#3B82F6"/>
+<circle cx="48" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="26" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#3B82F6"/>
+</svg></div>
+              <span class="size-label">128x128</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="symbolic-list">
+          <span class="tag highlight">Knowledge Graph</span>
+          <span class="tag highlight">Compass Navigation</span>
+          <span class="tag">Circular Horizon</span>
+          <span class="tag">4 Cardinal Nodes</span>
+          <span class="tag">Symmetrical Lattice</span>
+        </div>
+
+        <p class="description">
+          Merges a 4-point cardinal compass rose with a network graph. The outer precision ring anchors four major cardinal nodes (repos, docs, APIs, issues), connected through an inner ordinal lattice ring to a central Atlas core. Perfect balance between navigation and knowledge topology.
+        </p>
+
+        <div class="actions">
+          <a href="atlas-logo-option1-compass-graph.svg" download class="btn btn-primary">
+            Download SVG
+          </a>
+          <a href="atlas-logo-option1-monochrome.svg" download class="btn btn-secondary">
+            Monochrome
+          </a>
+        </div>
+      </div>
+
+      <!-- OPTION 2 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="option-title">Option 2: The Meridian Diamond</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Structural Astrolabe</p>
+          </div>
+        </div>
+
+        <div class="preview-box grid-bg">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="20" fill="none"/>
+<polygon points="256,121 391,256 256,391 121,256" stroke="#3B82F6" stroke-width="16" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="107.53" y1="107.53" x2="404.47" y2="404.47" stroke="#14B8A6" stroke-width="8" stroke-linecap="round"/>
+<line x1="404.47" y1="107.53" x2="107.53" y2="404.47" stroke="#14B8A6" stroke-width="8" stroke-linecap="round"/>
+<circle cx="256" cy="121" r="16" fill="#3B82F6"/>
+<circle cx="391" cy="256" r="16" fill="#3B82F6"/>
+<circle cx="256" cy="391" r="16" fill="#3B82F6"/>
+<circle cx="121" cy="256" r="16" fill="#3B82F6"/>
+<circle cx="256" cy="46" r="20" fill="#0F172A"/>
+<circle cx="466" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="466" r="20" fill="#0F172A"/>
+<circle cx="46" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="256" r="24" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg>
+        </div>
+
+        <div>
+          <div class="size-label" style="margin-bottom: 0.5rem;">SCALE LEGIBILITY TEST</div>
+          <div class="size-test-bar">
+            <div class="size-item">
+              <div style="width: 16px; height: 16px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="20" fill="none"/>
+<polygon points="256,121 391,256 256,391 121,256" stroke="#0F172A" stroke-width="16" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="107.53" y1="107.53" x2="404.47" y2="404.47" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+<line x1="404.47" y1="107.53" x2="107.53" y2="404.47" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+<circle cx="256" cy="121" r="16" fill="#0F172A"/>
+<circle cx="391" cy="256" r="16" fill="#0F172A"/>
+<circle cx="256" cy="391" r="16" fill="#0F172A"/>
+<circle cx="121" cy="256" r="16" fill="#0F172A"/>
+<circle cx="256" cy="46" r="20" fill="#0F172A"/>
+<circle cx="466" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="466" r="20" fill="#0F172A"/>
+<circle cx="46" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="256" r="24" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">16x16</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 32px; height: 32px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="20" fill="none"/>
+<polygon points="256,121 391,256 256,391 121,256" stroke="#0F172A" stroke-width="16" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="107.53" y1="107.53" x2="404.47" y2="404.47" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+<line x1="404.47" y1="107.53" x2="107.53" y2="404.47" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+<circle cx="256" cy="121" r="16" fill="#0F172A"/>
+<circle cx="391" cy="256" r="16" fill="#0F172A"/>
+<circle cx="256" cy="391" r="16" fill="#0F172A"/>
+<circle cx="121" cy="256" r="16" fill="#0F172A"/>
+<circle cx="256" cy="46" r="20" fill="#0F172A"/>
+<circle cx="466" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="466" r="20" fill="#0F172A"/>
+<circle cx="46" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="256" r="24" fill="#0F172A"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">32x32</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 64px; height: 64px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="20" fill="none"/>
+<polygon points="256,121 391,256 256,391 121,256" stroke="#3B82F6" stroke-width="16" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="107.53" y1="107.53" x2="404.47" y2="404.47" stroke="#14B8A6" stroke-width="8" stroke-linecap="round"/>
+<line x1="404.47" y1="107.53" x2="107.53" y2="404.47" stroke="#14B8A6" stroke-width="8" stroke-linecap="round"/>
+<circle cx="256" cy="121" r="16" fill="#3B82F6"/>
+<circle cx="391" cy="256" r="16" fill="#3B82F6"/>
+<circle cx="256" cy="391" r="16" fill="#3B82F6"/>
+<circle cx="121" cy="256" r="16" fill="#3B82F6"/>
+<circle cx="256" cy="46" r="20" fill="#0F172A"/>
+<circle cx="466" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="466" r="20" fill="#0F172A"/>
+<circle cx="46" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="256" r="24" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">64x64</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 128px; height: 128px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="20" fill="none"/>
+<polygon points="256,121 391,256 256,391 121,256" stroke="#3B82F6" stroke-width="16" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="107.53" y1="107.53" x2="404.47" y2="404.47" stroke="#14B8A6" stroke-width="8" stroke-linecap="round"/>
+<line x1="404.47" y1="107.53" x2="107.53" y2="404.47" stroke="#14B8A6" stroke-width="8" stroke-linecap="round"/>
+<circle cx="256" cy="121" r="16" fill="#3B82F6"/>
+<circle cx="391" cy="256" r="16" fill="#3B82F6"/>
+<circle cx="256" cy="391" r="16" fill="#3B82F6"/>
+<circle cx="121" cy="256" r="16" fill="#3B82F6"/>
+<circle cx="256" cy="46" r="20" fill="#0F172A"/>
+<circle cx="466" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="466" r="20" fill="#0F172A"/>
+<circle cx="46" cy="256" r="20" fill="#0F172A"/>
+<circle cx="256" cy="256" r="24" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">128x128</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="symbolic-list">
+          <span class="tag highlight">Diamond Core</span>
+          <span class="tag highlight">Coordinate Axis</span>
+          <span class="tag">Engineering Grid</span>
+          <span class="tag">Astrolabe Geometry</span>
+        </div>
+
+        <p class="description">
+          Features a central 45-degree diamond compass core embedded inside a circular frame with orthogonal and diagonal cross-axes. Represents engineering coordinate systems, mapping multidimensional code assets to a single origin.
+        </p>
+
+        <div class="actions">
+          <a href="atlas-logo-option2-meridian-diamond.svg" download class="btn btn-primary">
+            Download SVG
+          </a>
+          <a href="atlas-logo-option2-monochrome.svg" download class="btn btn-secondary">
+            Monochrome
+          </a>
+        </div>
+      </div>
+
+      <!-- OPTION 3 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="option-title">Option 3: The Node Astrolabe</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Concentric Knowledge Ring</p>
+          </div>
+        </div>
+
+        <div class="preview-box grid-bg">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="135" stroke="#3B82F6" stroke-width="12" stroke-dasharray="12 8" fill="none"/>
+<circle cx="256" cy="256" r="65" stroke="#14B8A6" stroke-width="10" fill="none"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="160.54058453981608" y1="160.5405845398161" x2="351.4594154601839" y2="351.4594154601839" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="351.4594154601839" y1="160.5405845398161" x2="160.54058453981608" y2="351.4594154601839" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<circle cx="256" cy="46" r="18" fill="#3B82F6"/>
+<circle cx="466" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="466" r="18" fill="#3B82F6"/>
+<circle cx="46" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="351.4594154601839" cy="160.5405845398161" r="14" fill="#14B8A6"/>
+<circle cx="351.4594154601839" cy="351.4594154601839" r="14" fill="#14B8A6"/>
+<circle cx="160.54058453981608" cy="351.4594154601839" r="14" fill="#14B8A6"/>
+<circle cx="160.54058453981608" cy="160.5405845398161" r="14" fill="#14B8A6"/>
+<circle cx="256" cy="191" r="10" fill="#0F172A"/>
+<circle cx="321" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="321" r="10" fill="#0F172A"/>
+<circle cx="191" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="256" r="8" fill="#14B8A6"/>
+</svg>
+        </div>
+
+        <div>
+          <div class="size-label" style="margin-bottom: 0.5rem;">SCALE LEGIBILITY TEST</div>
+          <div class="size-test-bar">
+            <div class="size-item">
+              <div style="width: 16px; height: 16px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="135" stroke="#0F172A" stroke-width="12" stroke-dasharray="12 8" fill="none"/>
+<circle cx="256" cy="256" r="65" stroke="#0F172A" stroke-width="10" fill="none"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="160.54058453981608" y1="160.5405845398161" x2="351.4594154601839" y2="351.4594154601839" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="351.4594154601839" y1="160.5405845398161" x2="160.54058453981608" y2="351.4594154601839" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<circle cx="256" cy="46" r="18" fill="#0F172A"/>
+<circle cx="466" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="466" r="18" fill="#0F172A"/>
+<circle cx="46" cy="256" r="18" fill="#0F172A"/>
+<circle cx="351.4594154601839" cy="160.5405845398161" r="14" fill="#0F172A"/>
+<circle cx="351.4594154601839" cy="351.4594154601839" r="14" fill="#0F172A"/>
+<circle cx="160.54058453981608" cy="351.4594154601839" r="14" fill="#0F172A"/>
+<circle cx="160.54058453981608" cy="160.5405845398161" r="14" fill="#0F172A"/>
+<circle cx="256" cy="191" r="10" fill="#0F172A"/>
+<circle cx="321" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="321" r="10" fill="#0F172A"/>
+<circle cx="191" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="256" r="8" fill="#0F172A"/>
+</svg></div>
+              <span class="size-label">16x16</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 32px; height: 32px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="135" stroke="#0F172A" stroke-width="12" stroke-dasharray="12 8" fill="none"/>
+<circle cx="256" cy="256" r="65" stroke="#0F172A" stroke-width="10" fill="none"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="160.54058453981608" y1="160.5405845398161" x2="351.4594154601839" y2="351.4594154601839" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<line x1="351.4594154601839" y1="160.5405845398161" x2="160.54058453981608" y2="351.4594154601839" stroke="#0F172A" stroke-width="10" stroke-linecap="round"/>
+<circle cx="256" cy="46" r="18" fill="#0F172A"/>
+<circle cx="466" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="466" r="18" fill="#0F172A"/>
+<circle cx="46" cy="256" r="18" fill="#0F172A"/>
+<circle cx="351.4594154601839" cy="160.5405845398161" r="14" fill="#0F172A"/>
+<circle cx="351.4594154601839" cy="351.4594154601839" r="14" fill="#0F172A"/>
+<circle cx="160.54058453981608" cy="351.4594154601839" r="14" fill="#0F172A"/>
+<circle cx="160.54058453981608" cy="160.5405845398161" r="14" fill="#0F172A"/>
+<circle cx="256" cy="191" r="10" fill="#0F172A"/>
+<circle cx="321" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="321" r="10" fill="#0F172A"/>
+<circle cx="191" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="256" r="8" fill="#0F172A"/>
+</svg></div>
+              <span class="size-label">32x32</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 64px; height: 64px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="135" stroke="#3B82F6" stroke-width="12" stroke-dasharray="12 8" fill="none"/>
+<circle cx="256" cy="256" r="65" stroke="#14B8A6" stroke-width="10" fill="none"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="160.54058453981608" y1="160.5405845398161" x2="351.4594154601839" y2="351.4594154601839" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="351.4594154601839" y1="160.5405845398161" x2="160.54058453981608" y2="351.4594154601839" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<circle cx="256" cy="46" r="18" fill="#3B82F6"/>
+<circle cx="466" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="466" r="18" fill="#3B82F6"/>
+<circle cx="46" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="351.4594154601839" cy="160.5405845398161" r="14" fill="#14B8A6"/>
+<circle cx="351.4594154601839" cy="351.4594154601839" r="14" fill="#14B8A6"/>
+<circle cx="160.54058453981608" cy="351.4594154601839" r="14" fill="#14B8A6"/>
+<circle cx="160.54058453981608" cy="160.5405845398161" r="14" fill="#14B8A6"/>
+<circle cx="256" cy="191" r="10" fill="#0F172A"/>
+<circle cx="321" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="321" r="10" fill="#0F172A"/>
+<circle cx="191" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="256" r="8" fill="#14B8A6"/>
+</svg></div>
+              <span class="size-label">64x64</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 128px; height: 128px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="210" stroke="#0F172A" stroke-width="18" fill="none"/>
+<circle cx="256" cy="256" r="135" stroke="#3B82F6" stroke-width="12" stroke-dasharray="12 8" fill="none"/>
+<circle cx="256" cy="256" r="65" stroke="#14B8A6" stroke-width="10" fill="none"/>
+<line x1="256" y1="46" x2="256" y2="466" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="46" y1="256" x2="466" y2="256" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+<line x1="160.54058453981608" y1="160.5405845398161" x2="351.4594154601839" y2="351.4594154601839" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<line x1="351.4594154601839" y1="160.5405845398161" x2="160.54058453981608" y2="351.4594154601839" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"/>
+<circle cx="256" cy="46" r="18" fill="#3B82F6"/>
+<circle cx="466" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="466" r="18" fill="#3B82F6"/>
+<circle cx="46" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="351.4594154601839" cy="160.5405845398161" r="14" fill="#14B8A6"/>
+<circle cx="351.4594154601839" cy="351.4594154601839" r="14" fill="#14B8A6"/>
+<circle cx="160.54058453981608" cy="351.4594154601839" r="14" fill="#14B8A6"/>
+<circle cx="160.54058453981608" cy="160.5405845398161" r="14" fill="#14B8A6"/>
+<circle cx="256" cy="191" r="10" fill="#0F172A"/>
+<circle cx="321" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="321" r="10" fill="#0F172A"/>
+<circle cx="191" cy="256" r="10" fill="#0F172A"/>
+<circle cx="256" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="256" r="8" fill="#14B8A6"/>
+</svg></div>
+              <span class="size-label">128x128</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="symbolic-list">
+          <span class="tag highlight">Concentric Orbits</span>
+          <span class="tag highlight">Multi-tier Graph</span>
+          <span class="tag">Radar Astrolabe</span>
+          <span class="tag">8 Radial Spokes</span>
+        </div>
+
+        <p class="description">
+          Uses 3 concentric orbital rings (Outer Horizon, Middle Data Orbit, Inner Core) connected by cardinal and ordinal radial spokes with node points. Conveys depth, layering, and multi-tier knowledge retrieval.
+        </p>
+
+        <div class="actions">
+          <a href="atlas-logo-option3-node-astrolabe.svg" download class="btn btn-primary">
+            Download SVG
+          </a>
+          <a href="atlas-logo-option3-monochrome.svg" download class="btn btn-secondary">
+            Monochrome
+          </a>
+        </div>
+      </div>
+
+      <!-- OPTION 4 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="option-title">Option 4: Linear Compass Node</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Ultra-Minimalist Icon</p>
+          </div>
+        </div>
+
+        <div class="preview-box grid-bg">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="205" stroke="#0F172A" stroke-width="26" fill="none"/>
+<polygon points="256,136 376,256 256,376 136,256" stroke="#3B82F6" stroke-width="20" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="51" x2="256" y2="461" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<line x1="51" y1="256" x2="461" y2="256" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<circle cx="256" cy="51" r="22" fill="#0F172A"/>
+<circle cx="461" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="461" r="22" fill="#0F172A"/>
+<circle cx="51" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="136" r="18" fill="#3B82F6"/>
+<circle cx="376" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="376" r="18" fill="#3B82F6"/>
+<circle cx="136" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="28" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="12" fill="#FFFFFF"/>
+</svg>
+        </div>
+
+        <div>
+          <div class="size-label" style="margin-bottom: 0.5rem;">SCALE LEGIBILITY TEST</div>
+          <div class="size-test-bar">
+            <div class="size-item">
+              <div style="width: 16px; height: 16px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="205" stroke="#0F172A" stroke-width="26" fill="none"/>
+<polygon points="256,136 376,256 256,376 136,256" stroke="#0F172A" stroke-width="20" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="51" x2="256" y2="461" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<line x1="51" y1="256" x2="461" y2="256" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<circle cx="256" cy="51" r="22" fill="#0F172A"/>
+<circle cx="461" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="461" r="22" fill="#0F172A"/>
+<circle cx="51" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="136" r="18" fill="#0F172A"/>
+<circle cx="376" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="376" r="18" fill="#0F172A"/>
+<circle cx="136" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="256" r="28" fill="#0F172A"/>
+<circle cx="256" cy="256" r="12" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">16x16</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 32px; height: 32px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="205" stroke="#0F172A" stroke-width="26" fill="none"/>
+<polygon points="256,136 376,256 256,376 136,256" stroke="#0F172A" stroke-width="20" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="51" x2="256" y2="461" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<line x1="51" y1="256" x2="461" y2="256" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<circle cx="256" cy="51" r="22" fill="#0F172A"/>
+<circle cx="461" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="461" r="22" fill="#0F172A"/>
+<circle cx="51" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="136" r="18" fill="#0F172A"/>
+<circle cx="376" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="376" r="18" fill="#0F172A"/>
+<circle cx="136" cy="256" r="18" fill="#0F172A"/>
+<circle cx="256" cy="256" r="28" fill="#0F172A"/>
+<circle cx="256" cy="256" r="12" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">32x32</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 64px; height: 64px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="205" stroke="#0F172A" stroke-width="26" fill="none"/>
+<polygon points="256,136 376,256 256,376 136,256" stroke="#3B82F6" stroke-width="20" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="51" x2="256" y2="461" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<line x1="51" y1="256" x2="461" y2="256" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<circle cx="256" cy="51" r="22" fill="#0F172A"/>
+<circle cx="461" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="461" r="22" fill="#0F172A"/>
+<circle cx="51" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="136" r="18" fill="#3B82F6"/>
+<circle cx="376" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="376" r="18" fill="#3B82F6"/>
+<circle cx="136" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="28" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="12" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">64x64</span>
+            </div>
+            <div class="size-item">
+              <div style="width: 128px; height: 128px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+
+<circle cx="256" cy="256" r="205" stroke="#0F172A" stroke-width="26" fill="none"/>
+<polygon points="256,136 376,256 256,376 136,256" stroke="#3B82F6" stroke-width="20" fill="none" stroke-linejoin="round"/>
+<line x1="256" y1="51" x2="256" y2="461" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<line x1="51" y1="256" x2="461" y2="256" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+<circle cx="256" cy="51" r="22" fill="#0F172A"/>
+<circle cx="461" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="461" r="22" fill="#0F172A"/>
+<circle cx="51" cy="256" r="22" fill="#0F172A"/>
+<circle cx="256" cy="136" r="18" fill="#3B82F6"/>
+<circle cx="376" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="376" r="18" fill="#3B82F6"/>
+<circle cx="136" cy="256" r="18" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="28" fill="#3B82F6"/>
+<circle cx="256" cy="256" r="12" fill="#FFFFFF"/>
+</svg></div>
+              <span class="size-label">128x128</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="symbolic-list">
+          <span class="tag highlight">Ultra-Bold Lines</span>
+          <span class="tag highlight">High Contrast</span>
+          <span class="tag">Favicon Optimized</span>
+          <span class="tag">Linear SaaS Aesthetic</span>
+        </div>
+
+        <p class="description">
+          Distills the compass-network metaphor down to ultra-bold vector primitives. Heavy stroke weight, clean diamond compass core, and 4 high-contrast cardinal nodes ensure instant recognition at tiny resolutions like 16x16 browser favicons.
+        </p>
+
+        <div class="actions">
+          <a href="atlas-logo-option4-linear-compass.svg" download class="btn btn-primary">
+            Download SVG
+          </a>
+          <a href="atlas-logo-option4-monochrome.svg" download class="btn btn-secondary">
+            Monochrome
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Design Guidelines & Technical Compliance</div>
+      <p style="color: var(--text-muted);">All 4 logo concepts strictly satisfy every constraint of the design specification:</p>
+
+      <div class="criteria-grid">
+        <div class="crit-box">
+          <h4>No Clichés & Flat Vectors</h4>
+          <p>Zero gradients, zero drop shadows, no text, no robot heads, brain icons, clouds, or generic AI symbols. Pure geometric lines and vector shapes.</p>
+        </div>
+        <div class="crit-box">
+          <h4>Network Graph + Compass</h4>
+          <p>Circular construction merging cardinal navigation (North/East/South/West) with graph vertices (nodes & structural edges) symbolizing connected engineering context.</p>
+        </div>
+        <div class="crit-box">
+          <h4>Multi-Scale Legibility</h4>
+          <p>Engineered for high silhouette clarity at 16x16 menu/favicon sizes as well as full 512x512 app icons, dark modes, and 100% monochrome prints.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

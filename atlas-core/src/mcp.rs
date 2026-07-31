@@ -126,6 +126,18 @@ async fn handle_request(
                     }
                 },
                 {
+                    "name": "atx_context",
+                    "description": "Build concise, deterministic, AI-ready engineering context for an issue, PR, repository, ADR, or artifact ID",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string", "description": "Artifact ID, source_id, repository name, or ADR ID (e.g., PAY-123, 456, payment-service, ADR-001)" },
+                            "kind": { "type": "string", "description": "Optional context target kind (e.g., issue, pr, repository, adr)" }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "atx_status",
                     "description": "Get current status and statistics of local Atlas context graph",
                     "inputSchema": {
@@ -230,6 +242,29 @@ async fn handle_request(
                             {
                                 "type": "text",
                                 "text": out
+                            }
+                        ]
+                    }))
+                }
+                "atx_context" | "atlas_context" => {
+                    let id_param = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let kind_param = args.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let storage_clone = storage.clone();
+
+                    let pkg = tokio::task::spawn_blocking(move || {
+                        let builder = crate::context::ContextBuilder::new(&storage_clone);
+                        let options = crate::context::ContextOptions::default();
+                        builder.build(kind_param.as_deref(), &id_param, &options)
+                    })
+                    .await??;
+
+                    let json_str = serde_json::to_string_pretty(&pkg)?;
+
+                    Ok(json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json_str
                             }
                         ]
                     }))

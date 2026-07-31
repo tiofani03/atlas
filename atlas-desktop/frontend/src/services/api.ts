@@ -71,4 +71,9 @@ export const api = {
   },
   
   getObjectById: (id: string) => fetchJson<KnowledgeObject>(`${API_BASE}/objects/${encodeURIComponent(id)}`),
+  
+  clearData: () =>
+    fetchJson<{ success: boolean; message: string }>(`${API_BASE}/storage/clear`, {
+      method: 'POST',
+    }),
 };

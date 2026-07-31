@@ -38,4 +38,33 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-
+pub async fn clear_data(State(state): State<AppState>) -> impl IntoResponse {
+    match state.load_config() {
+        Ok(cfg) => {
+            let db_path = cfg.resolve_db_path();
+            match atlas_core::Storage::new(&db_path) {
+                Ok(storage) => match storage.clear_all_data() {
+                    Ok(_) => (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": "All engineering context data cleared successfully."
+                        })),
+                    ),
+                    Err(err) => (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": err.to_string() })),
+                    ),
+                },
+                Err(err) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": err.to_string() })),
+                ),
+            }
+        }
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": err.to_string() })),
+        ),
+    }
+}
