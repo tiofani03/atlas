@@ -150,6 +150,21 @@ impl Storage {
         Ok(())
     }
 
+    pub fn clear_all_data(&self) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS knowledge_objects;
+             DELETE FROM knowledge_artifacts;
+             DELETE FROM artifact_relationships;
+             DELETE FROM connectors_state;
+             DELETE FROM knowledge_fts;
+             PRAGMA wal_checkpoint(TRUNCATE);
+             VACUUM;
+             PRAGMA wal_checkpoint(TRUNCATE);",
+        )?;
+        Ok(())
+    }
+
     pub fn get_existing_checksum(&self, id: &str) -> Result<Option<String>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT checksum FROM knowledge_artifacts WHERE id = ?1")?;
@@ -487,7 +502,15 @@ impl Storage {
             |row| row.get(0),
         )?;
 
-        let db_size_bytes = fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        let mut db_size_bytes = fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        let wal_path = self.path.with_extension("db-wal");
+        if let Ok(m) = fs::metadata(&wal_path) {
+            db_size_bytes += m.len();
+        }
+        let shm_path = self.path.with_extension("db-shm");
+        if let Ok(m) = fs::metadata(&shm_path) {
+            db_size_bytes += m.len();
+        }
 
         Ok(StorageStats {
             total_artifacts,

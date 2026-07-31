@@ -1,7 +1,8 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import { Box, Terminal, Cpu, CheckCircle } from 'lucide-react';
+import atlasLogo from '../../assets/logo.svg';
+import { Terminal, Cpu, CheckCircle } from 'lucide-react';
 
 export const AboutPage: React.FC = () => {
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.getStatus });
@@ -17,8 +18,8 @@ export const AboutPage: React.FC = () => {
 
       <div className="glass-card p-6 rounded-xl border border-slate-200 dark:border-zinc-800 space-y-5 max-w-xl shadow-xs">
         <div className="flex items-center gap-4 border-b border-slate-200 dark:border-zinc-800 pb-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
-            <Box className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 shadow-md shrink-0 bg-slate-900 p-1.5 flex items-center justify-center">
+            <img src={atlasLogo} alt="Atlas Logo" className="w-full h-full object-contain" />
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">Atlas Desktop Companion</h3>

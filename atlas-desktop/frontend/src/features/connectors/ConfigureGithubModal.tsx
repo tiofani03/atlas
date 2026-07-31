@@ -6,13 +6,18 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialConfig?: {
+    id: string;
+    instance_url: string;
+    repos: string[];
+  };
 }
 
-export const ConfigureGithubModal: React.FC<ModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [id, setId] = useState('github-main');
-  const [instanceUrl, setInstanceUrl] = useState('https://api.github.com');
+export const ConfigureGithubModal: React.FC<ModalProps> = ({ isOpen, onClose, onSuccess, initialConfig }) => {
+  const [id, setId] = useState(initialConfig?.id || 'github-main');
+  const [instanceUrl, setInstanceUrl] = useState(initialConfig?.instance_url || 'https://api.github.com');
   const [apiToken, setApiToken] = useState('');
-  const [repos, setRepos] = useState('owner/repository');
+  const [repos, setRepos] = useState(initialConfig?.repos?.join(', ') || 'owner/repository');
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,7 +50,7 @@ export const ConfigureGithubModal: React.FC<ModalProps> = ({ isOpen, onClose, on
       await api.saveGithubConnector({
         id,
         instance_url: instanceUrl,
-        api_token: apiToken,
+        api_token: apiToken || undefined,
         repos: repoArray,
       });
       onSuccess();
@@ -97,12 +102,14 @@ export const ConfigureGithubModal: React.FC<ModalProps> = ({ isOpen, onClose, on
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Personal Access Token (PAT)</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">
+              Personal Access Token (PAT) {initialConfig && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">(Saved — leave empty to keep unchanged)</span>}
+            </label>
             <input
               type="password"
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
-              placeholder="ghp_... or github_pat_..."
+              placeholder={initialConfig ? '•••••••• (Token Saved)' : 'ghp_... or github_pat_...'}
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
             />
           </div>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/atlas-logo.svg" alt="Atlas Logo" width="120" height="120" />
+</p>
+
 # Atlas — Unified Engineering Context Engine
 
 > **One engineering context. Infinite possibilities.**

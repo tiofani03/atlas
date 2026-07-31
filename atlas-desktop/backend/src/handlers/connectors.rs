@@ -105,14 +105,38 @@ pub async fn save_jira_connector(
         }
     };
 
+    let existing = cfg.connectors.get(&payload.id);
+
+    let final_token = match payload.api_token {
+        Some(ref t) if !t.trim().is_empty() => Some(t.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token.clone()),
+    };
+
+    let final_token_env = match payload.api_token_env {
+        Some(ref e) if !e.trim().is_empty() => Some(e.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token_env.clone()),
+    };
+
+    let final_url = if !payload.instance_url.trim().is_empty() {
+        payload.instance_url
+    } else {
+        existing.map(|e| e.instance_url.clone()).unwrap_or_default()
+    };
+
+    let final_email = if !payload.email.trim().is_empty() {
+        payload.email
+    } else {
+        existing.map(|e| e.email.clone()).unwrap_or_default()
+    };
+
     cfg.connectors.insert(
         payload.id.clone(),
         ConnectorConfig {
             provider: "jira".to_string(),
-            instance_url: payload.instance_url,
-            email: payload.email,
-            api_token: payload.api_token,
-            api_token_env: payload.api_token_env,
+            instance_url: final_url,
+            email: final_email,
+            api_token: final_token,
+            api_token_env: final_token_env,
             projects: payload.projects.unwrap_or_default(),
             spaces: Vec::new(),
             repos: Vec::new(),
@@ -146,14 +170,38 @@ pub async fn save_confluence_connector(
         }
     };
 
+    let existing = cfg.connectors.get(&payload.id);
+
+    let final_token = match payload.api_token {
+        Some(ref t) if !t.trim().is_empty() => Some(t.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token.clone()),
+    };
+
+    let final_token_env = match payload.api_token_env {
+        Some(ref e) if !e.trim().is_empty() => Some(e.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token_env.clone()),
+    };
+
+    let final_url = if !payload.instance_url.trim().is_empty() {
+        payload.instance_url
+    } else {
+        existing.map(|e| e.instance_url.clone()).unwrap_or_default()
+    };
+
+    let final_email = if !payload.email.trim().is_empty() {
+        payload.email
+    } else {
+        existing.map(|e| e.email.clone()).unwrap_or_default()
+    };
+
     cfg.connectors.insert(
         payload.id.clone(),
         ConnectorConfig {
             provider: "confluence".to_string(),
-            instance_url: payload.instance_url,
-            email: payload.email,
-            api_token: payload.api_token,
-            api_token_env: payload.api_token_env,
+            instance_url: final_url,
+            email: final_email,
+            api_token: final_token,
+            api_token_env: final_token_env,
             projects: Vec::new(),
             spaces: payload.spaces.unwrap_or_default(),
             repos: Vec::new(),
@@ -187,14 +235,33 @@ pub async fn save_github_connector(
         }
     };
 
+    let existing = cfg.connectors.get(&payload.id);
+
+    let final_token = match payload.api_token {
+        Some(ref t) if !t.trim().is_empty() => Some(t.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token.clone()),
+    };
+
+    let final_token_env = match payload.api_token_env {
+        Some(ref e) if !e.trim().is_empty() => Some(e.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token_env.clone()),
+    };
+
+    let final_url = match payload.instance_url {
+        Some(ref u) if !u.trim().is_empty() => u.clone(),
+        _ => existing
+            .map(|e| e.instance_url.clone())
+            .unwrap_or_else(|| "https://api.github.com".to_string()),
+    };
+
     cfg.connectors.insert(
         payload.id.clone(),
         ConnectorConfig {
             provider: "github".to_string(),
-            instance_url: payload.instance_url.unwrap_or_else(|| "https://api.github.com".to_string()),
+            instance_url: final_url,
             email: String::new(),
-            api_token: payload.api_token,
-            api_token_env: payload.api_token_env,
+            api_token: final_token,
+            api_token_env: final_token_env,
             projects: Vec::new(),
             spaces: Vec::new(),
             repos: payload.repos.unwrap_or_default(),

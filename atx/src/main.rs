@@ -37,7 +37,7 @@ enum Commands {
     /// Synchronize knowledge from external connectors into local context graph
     Sync {
         /// Optional connector ID to sync specifically
-        #[arg(short, long)]
+        #[arg(long)]
         connector: Option<String>,
 
         /// Force full re-sync ignoring last sync watermarks
@@ -162,6 +162,20 @@ enum Commands {
     /// Show storage statistics, connector status, and graph size
     Status,
 
+    /// Clear all synchronized context data and reset SQLite index
+    Reset {
+        /// Force clear without asking for confirmation
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Alias for reset command
+    Clear {
+        /// Force clear without asking for confirmation
+        #[arg(short, long)]
+        force: bool,
+    },
+
     /// Run stdio Model Context Protocol (MCP) Server for AI tools
     Mcp,
 }
@@ -175,19 +189,22 @@ enum ConfigSubcommands {
         id: String,
         /// Jira Instance URL (e.g. https://company.atlassian.net)
         #[arg(long)]
-        url: String,
+        url: Option<String>,
         /// User Email
         #[arg(long)]
-        email: String,
+        email: Option<String>,
         /// API Token
         #[arg(long)]
         token: Option<String>,
         /// Environment variable containing API Token
         #[arg(long)]
         token_env: Option<String>,
-        /// Comma-separated project keys (e.g. "PAY,DEV")
+        /// Comma-separated project keys (replaces existing project list)
         #[arg(long)]
         projects: Option<String>,
+        /// Add comma-separated project keys to existing list without overwriting credentials
+        #[arg(long)]
+        add_projects: Option<String>,
     },
     /// Configure Confluence connector
     Confluence {
@@ -196,19 +213,22 @@ enum ConfigSubcommands {
         id: String,
         /// Confluence Instance URL
         #[arg(long)]
-        url: String,
+        url: Option<String>,
         /// User Email
         #[arg(long)]
-        email: String,
+        email: Option<String>,
         /// API Token
         #[arg(long)]
         token: Option<String>,
         /// Environment variable containing API Token
         #[arg(long)]
         token_env: Option<String>,
-        /// Comma-separated space keys (e.g. "ENG,ARCH")
+        /// Comma-separated space keys (replaces existing space list)
         #[arg(long)]
         spaces: Option<String>,
+        /// Add comma-separated space keys to existing list without overwriting credentials
+        #[arg(long)]
+        add_spaces: Option<String>,
     },
     /// Configure GitHub connector
     Github {
@@ -216,17 +236,20 @@ enum ConfigSubcommands {
         #[arg(default_value = "github-main")]
         id: String,
         /// GitHub API Base URL [default: https://api.github.com]
-        #[arg(long, default_value = "https://api.github.com")]
-        url: String,
+        #[arg(long)]
+        url: Option<String>,
         /// Personal Access Token
         #[arg(long)]
         token: Option<String>,
         /// Environment variable containing Personal Access Token
         #[arg(long)]
         token_env: Option<String>,
-        /// Comma-separated repositories (e.g. "owner/repo1,owner/repo2")
+        /// Comma-separated repositories (replaces existing repo list)
         #[arg(long)]
-        repos: String,
+        repos: Option<String>,
+        /// Add comma-separated repositories to existing list without overwriting credentials
+        #[arg(long)]
+        add_repos: Option<String>,
     },
 }
 
@@ -264,19 +287,36 @@ async fn main() -> Result<()> {
                     token,
                     token_env,
                     projects,
+                    add_projects,
                 } => {
-                    let project_list = projects
-                        .map(|p| p.split(',').map(|s| s.trim().to_string()).collect())
-                        .unwrap_or_default();
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_default();
+                    let final_email = email.or_else(|| existing.as_ref().map(|e| e.email.clone())).unwrap_or_default();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+
+                    let mut project_list = if let Some(p) = projects {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.projects.clone()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_projects {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !project_list.contains(&new_p) {
+                                project_list.push(new_p);
+                            }
+                        }
+                    }
 
                     cfg.connectors.insert(
                         id.clone(),
                         ConnectorConfig {
                             provider: "jira".to_string(),
-                            instance_url: url,
-                            email,
-                            api_token: token,
-                            api_token_env: token_env,
+                            instance_url: final_url,
+                            email: final_email,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
                             projects: project_list,
                             spaces: Vec::new(),
                             repos: Vec::new(),
@@ -284,7 +324,7 @@ async fn main() -> Result<()> {
                     );
 
                     cfg.save_to_path(&config_path)?;
-                    println!("Jira connector '{}' configured successfully!", id);
+                    println!("Jira connector '{}' updated successfully!", id);
                 }
 
                 ConfigSubcommands::Confluence {
@@ -294,19 +334,36 @@ async fn main() -> Result<()> {
                     token,
                     token_env,
                     spaces,
+                    add_spaces,
                 } => {
-                    let space_list = spaces
-                        .map(|s| s.split(',').map(|item| item.trim().to_string()).collect())
-                        .unwrap_or_default();
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_default();
+                    let final_email = email.or_else(|| existing.as_ref().map(|e| e.email.clone())).unwrap_or_default();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+
+                    let mut space_list = if let Some(s) = spaces {
+                        s.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.spaces.clone()).unwrap_or_default()
+                    };
+
+                    if let Some(add_s) = add_spaces {
+                        for new_s in add_s.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()) {
+                            if !space_list.contains(&new_s) {
+                                space_list.push(new_s);
+                            }
+                        }
+                    }
 
                     cfg.connectors.insert(
                         id.clone(),
                         ConnectorConfig {
                             provider: "confluence".to_string(),
-                            instance_url: url,
-                            email,
-                            api_token: token,
-                            api_token_env: token_env,
+                            instance_url: final_url,
+                            email: final_email,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
                             projects: Vec::new(),
                             spaces: space_list,
                             repos: Vec::new(),
@@ -314,7 +371,7 @@ async fn main() -> Result<()> {
                     );
 
                     cfg.save_to_path(&config_path)?;
-                    println!("Confluence connector '{}' configured successfully!", id);
+                    println!("Confluence connector '{}' updated successfully!", id);
                 }
 
                 ConfigSubcommands::Github {
@@ -323,21 +380,35 @@ async fn main() -> Result<()> {
                     token,
                     token_env,
                     repos,
+                    add_repos,
                 } => {
-                    let repo_list = repos
-                        .split(',')
-                        .map(|r| r.trim().to_string())
-                        .filter(|r| !r.is_empty())
-                        .collect();
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://api.github.com".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+
+                    let mut repo_list = if let Some(r) = repos {
+                        r.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.repos.clone()).unwrap_or_default()
+                    };
+
+                    if let Some(add_r) = add_repos {
+                        for new_r in add_r.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()) {
+                            if !repo_list.contains(&new_r) {
+                                repo_list.push(new_r);
+                            }
+                        }
+                    }
 
                     cfg.connectors.insert(
                         id.clone(),
                         ConnectorConfig {
                             provider: "github".to_string(),
-                            instance_url: url,
+                            instance_url: final_url,
                             email: String::new(),
-                            api_token: token,
-                            api_token_env: token_env,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
                             projects: Vec::new(),
                             spaces: Vec::new(),
                             repos: repo_list,
@@ -345,7 +416,7 @@ async fn main() -> Result<()> {
                     );
 
                     cfg.save_to_path(&config_path)?;
-                    println!("GitHub connector '{}' configured successfully!", id);
+                    println!("GitHub connector '{}' updated successfully!", id);
                 }
             }
         }
@@ -573,6 +644,29 @@ async fn main() -> Result<()> {
 
                 println!("  - [{}] ({}) -> Last Sync: {}", id, conn_cfg.provider, sync_str);
             }
+        }
+
+        Commands::Reset { force } | Commands::Clear { force } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let db_path = cfg.resolve_db_path();
+            let storage = Storage::new(&db_path)?;
+
+            if !force {
+                println!("⚠️  WARNING: This will permanently delete all synchronized knowledge artifacts, relationships, and search indexes.");
+                print!("Are you sure you want to clear all data? [y/N]: ");
+                use std::io::Write;
+                std::io::stdout().flush()?;
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                let trimmed = input.trim().to_lowercase();
+                if trimmed != "y" && trimmed != "yes" {
+                    println!("Operation cancelled.");
+                    return Ok(());
+                }
+            }
+
+            storage.clear_all_data()?;
+            println!("✨ Magic Reset Complete: All engineering context data has been cleared!");
         }
 
         Commands::Mcp => {
