@@ -32,6 +32,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/sync/status", get(sync::get_sync_status))
         .route("/api/search", get(search::search_objects))
         .route("/api/objects/:id", get(search::get_object_by_id))
+        .route("/api/context/:id", get(search::get_context))
         .layer(cors)
         .with_state(state)
 }

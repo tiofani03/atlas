@@ -33,17 +33,101 @@ impl JiraConnector {
     }
 
     fn extract_adf_text(val: &Value) -> String {
-        let mut text = String::new();
-        if let Some(t) = val.get("text").and_then(|v| v.as_str()) {
-            text.push_str(t);
-        }
-        if let Some(content) = val.get("content").and_then(|v| v.as_array()) {
-            for child in content {
-                text.push_str(&Self::extract_adf_text(child));
-                text.push(' ');
+        let mut out = String::new();
+        Self::parse_adf_node(val, &mut out, 0);
+        let mut clean = String::new();
+        for line in out.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                clean.push_str(trimmed);
+                clean.push('\n');
             }
         }
-        text
+        clean.trim().to_string()
+    }
+
+    fn parse_adf_node(val: &Value, out: &mut String, depth: usize) {
+        if !val.is_object() {
+            return;
+        }
+
+        let node_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        match node_type {
+            "text" => {
+                if let Some(t) = val.get("text").and_then(|v| v.as_str()) {
+                    let mut formatted = t.to_string();
+                    if let Some(marks) = val.get("marks").and_then(|v| v.as_array()) {
+                        for mark in marks {
+                            let mark_type = mark.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                            if mark_type == "link" {
+                                if let Some(href) = mark.get("attrs").and_then(|a| a.get("href")).and_then(|v| v.as_str()) {
+                                    if !formatted.contains(href) {
+                                        formatted = format!("{} ({})", formatted, href);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    out.push_str(&formatted);
+                }
+            }
+            "inlineCard" | "blockCard" => {
+                if let Some(url) = val.get("attrs").and_then(|a| a.get("url")).and_then(|v| v.as_str()) {
+                    out.push_str(&format!(" {}", url));
+                }
+            }
+            "hardBreak" => {
+                out.push('\n');
+            }
+            "heading" => {
+                out.push_str("\n\n");
+                let level = val.get("attrs").and_then(|a| a.get("level")).and_then(|v| v.as_u64()).unwrap_or(3);
+                for _ in 0..level {
+                    out.push('#');
+                }
+                out.push(' ');
+                if let Some(content) = val.get("content").and_then(|v| v.as_array()) {
+                    for child in content {
+                        Self::parse_adf_node(child, out, depth + 1);
+                    }
+                }
+                out.push_str("\n\n");
+            }
+            "paragraph" => {
+                out.push('\n');
+                if let Some(content) = val.get("content").and_then(|v| v.as_array()) {
+                    for child in content {
+                        Self::parse_adf_node(child, out, depth + 1);
+                    }
+                }
+                out.push('\n');
+            }
+            "listItem" => {
+                out.push_str("\n- ");
+                if let Some(content) = val.get("content").and_then(|v| v.as_array()) {
+                    for child in content {
+                        Self::parse_adf_node(child, out, depth + 1);
+                    }
+                }
+            }
+            "codeBlock" => {
+                out.push_str("\n```\n");
+                if let Some(content) = val.get("content").and_then(|v| v.as_array()) {
+                    for child in content {
+                        Self::parse_adf_node(child, out, depth + 1);
+                    }
+                }
+                out.push_str("\n```\n");
+            }
+            _ => {
+                if let Some(content) = val.get("content").and_then(|v| v.as_array()) {
+                    for child in content {
+                        Self::parse_adf_node(child, out, depth + 1);
+                    }
+                }
+            }
+        }
     }
 }
 

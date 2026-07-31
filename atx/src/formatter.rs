@@ -522,214 +522,190 @@ pub fn format_artifact_detail(
 }
 
 pub fn format_context_package(
-    art: &KnowledgeArtifact,
-    related: &[(ArtifactRelationship, KnowledgeArtifact)],
-    verbose: bool,
+    pkg: &atlas_core::ContextPackage,
+    _verbose: bool,
     raw: bool,
 ) -> String {
     if raw {
-        return format!("Context raw for artifact {:?}, related: {:?}", art, related);
+        return format!("{:?}", pkg);
     }
 
-    let primary_key = primary_id(art);
     let mut out = String::new();
 
-    out.push_str("Engineering Context\n\n");
+    // Header
+    out.push_str(&format!("Context for {}\n", pkg.target_id));
+    out.push_str(&"=".repeat(12 + pkg.target_id.len()));
+    out.push_str("\n\n");
 
-    out.push_str("Artifact\n\n");
-    out.push_str(&primary_key);
+    // 1. Title
+    out.push_str("Title\n-----\n");
+    out.push_str(&pkg.title);
+    out.push_str("\n\n");
+
+    // 2. Status
+    out.push_str("Status\n------\n");
+    out.push_str(&pkg.status);
+    out.push_str("\n\n");
+
+    // 3. Repository
+    out.push_str("Repository\n----------\n");
+    out.push_str(pkg.repository.as_deref().unwrap_or("N/A"));
+    out.push_str("\n\n");
+
+    // Description (if present)
+    if let Some(ref desc) = pkg.description {
+        out.push_str("Description\n-----------\n");
+        let clean_desc = if desc.len() > 1000 && !_verbose {
+            format!("{}...", &desc[..1000])
+        } else {
+            desc.to_string()
+        };
+        out.push_str(&clean_desc);
+        out.push_str("\n\n");
+    }
+
+    // 4. Engineering Readiness
+    out.push_str("Engineering Readiness\n---------------------\n\n");
+    out.push_str(&format!("{}\n\n", pkg.engineering_readiness.status_label));
+    out.push_str(&format!("{}\n\n", pkg.engineering_readiness.readiness_summary));
+
+    out.push_str("Available\n\n");
+    if !pkg.engineering_readiness.available.is_empty() {
+        for item in &pkg.engineering_readiness.available {
+            out.push_str(&format!("✓ {}\n", item));
+        }
+    } else {
+        out.push_str("(None)\n");
+    }
+
+    if !pkg.engineering_readiness.missing.is_empty() {
+        out.push_str("\nMissing\n\n");
+        for item in &pkg.engineering_readiness.missing {
+            out.push_str(&format!("✗ {}\n", item));
+        }
+    }
+    out.push_str("\n");
+
+    // 5. Context Completeness
+    out.push_str("Context Completeness\n--------------------\n\n");
+    out.push_str(&format!("{} {}%\n\n", pkg.completeness.progress_bar, pkg.completeness.score_percentage));
+
+    out.push_str("Scoring\n\n");
+    let all_categories = [
+        ("Repository", !pkg.affected_repositories.is_empty()),
+        ("Related APIs", !pkg.apis.is_empty()),
+        ("Related Issues", !pkg.related_artifacts.is_empty()),
+        ("Architecture Decision", !pkg.architecture_decisions.is_empty()),
+        ("Documentation", !pkg.related_documentation.is_empty()),
+        ("Previous PRs", !pkg.related_pull_requests.is_empty()),
+        ("Commit History", !pkg.related_commits.is_empty()),
+    ];
+
+    for (label, is_present) in all_categories {
+        let mark = if is_present { "✓" } else { "✗" };
+        let dots = format_dots(label, mark, 28);
+        out.push_str(&dots);
+        out.push('\n');
+    }
     out.push('\n');
-    out.push_str(&art.title);
-    out.push_str("\n\n");
 
-    // Requirement
-    let req_text = art
-        .summary
-        .as_deref()
-        .map(|s| {
-            if s.starts_with("Status: ") {
-                s["Status: ".len()..].trim()
-            } else {
-                s
-            }
-        })
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            if !art.body.is_empty() {
-                art.body.lines().next().unwrap_or(&art.title)
-            } else {
-                &art.title
-            }
-        });
-    out.push_str("Requirement\n\n");
-    out.push_str(req_text);
-    out.push_str("\n\n");
-
-    let mut design_docs = Vec::new();
-    let mut implementations = Vec::new();
-    let mut commits = Vec::new();
-    let mut apis = Vec::new();
-    let mut releases = Vec::new();
-    let mut tickets = Vec::new();
-
-    let mut seen = std::collections::HashSet::new();
-
-    for (_rel, rel_art) in related {
-        if seen.insert(rel_art.id.clone()) {
-            let display_str = format_related_item(rel_art);
-            match rel_art.kind {
-                ArtifactKind::Document
-                | ArtifactKind::Specification
-                | ArtifactKind::Design => design_docs.push((display_str, rel_art.title.clone())),
-                ArtifactKind::PullRequest
-                | ArtifactKind::PullRequestReview
-                | ArtifactKind::ReviewComment => implementations.push(display_str),
-                ArtifactKind::Commit => commits.push(display_str),
-                ArtifactKind::Component => apis.push((display_str, rel_art.title.clone())),
-                ArtifactKind::Release => releases.push(display_str),
-                ArtifactKind::Ticket | ArtifactKind::Issue => tickets.push(display_str),
-                _ => {
-                    if rel_art.tags.iter().any(|t| t.contains("api") || t.contains("openapi")) {
-                        apis.push((display_str, rel_art.title.clone()));
-                    }
-                }
-            }
+    // 6. Recommended Reading
+    if !pkg.recommended_reading.is_empty() {
+        out.push_str("Recommended Reading\n-------------------\n\n");
+        for (idx, item) in pkg.recommended_reading.iter().enumerate() {
+            out.push_str(&format!("{}. {}\n   {}\n\n", idx + 1, item.source_id, item.title));
         }
     }
 
-    for rel in &art.relationships {
-        let target = &rel.target_id;
-        if seen.insert(target.clone()) {
-            let kind_guess = classify_id(target);
-            let item_str = format_target_id(target, &kind_guess);
-            match kind_guess {
-                ArtifactKind::Document
-                | ArtifactKind::Specification
-                | ArtifactKind::Design => design_docs.push((item_str, String::new())),
-                ArtifactKind::PullRequest
-                | ArtifactKind::PullRequestReview
-                | ArtifactKind::ReviewComment => implementations.push(item_str),
-                ArtifactKind::Commit => commits.push(item_str),
-                ArtifactKind::Release => releases.push(item_str),
-                ArtifactKind::Ticket | ArtifactKind::Issue => tickets.push(item_str),
-                _ => {}
-            }
+    // 7. Implementation Hints
+    if !pkg.implementation_hints.is_empty() {
+        out.push_str("Implementation Hints\n--------------------\n\n");
+        for hint in &pkg.implementation_hints {
+            out.push_str(&format!("• {}\n\n", hint));
         }
     }
 
-    // Design Documents
-    if !design_docs.is_empty() {
-        out.push_str("Design Documents\n\n");
-        for (doc_id, doc_title) in &design_docs {
-            out.push_str(doc_id);
-            out.push('\n');
-            if !doc_title.is_empty() && doc_title != doc_id {
-                out.push_str(doc_title);
-                out.push('\n');
+    // 8. Suggested Next Actions
+    if !pkg.suggested_next_actions.is_empty() {
+        out.push_str("Suggested Next Actions\n----------------------\n\n");
+        for action in &pkg.suggested_next_actions {
+            out.push_str(&format!("{}. {}\n   {}\n", action.step, action.action, action.detail));
+            if let Some(ref cmd) = action.command {
+                out.push_str(&format!("   {}\n", cmd));
             }
-        }
-        out.push('\n');
-    }
-
-    // Implementation
-    if !implementations.is_empty() {
-        out.push_str("Implementation\n\n");
-        for imp in &implementations {
-            out.push_str(imp);
             out.push('\n');
         }
-        out.push('\n');
     }
 
-    // Commits
-    if !commits.is_empty() {
-        out.push_str("Commits\n\n");
-        for c in &commits {
-            out.push_str(c);
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-
-    // Related APIs
-    if !apis.is_empty() {
-        out.push_str("Related APIs\n\n");
-        for (api_id, api_title) in &apis {
-            out.push_str(api_id);
-            out.push('\n');
-            if !api_title.is_empty() && api_title != api_id {
-                out.push_str(api_title);
-                out.push('\n');
+    // 9. Related Artifacts
+    let categories_map = group_related_artifacts(pkg);
+    if !categories_map.is_empty() {
+        out.push_str("Related Artifacts\n-----------------\n\n");
+        for (cat_name, items) in categories_map {
+            out.push_str(&format!("{}\n", cat_name));
+            for (id_display, label) in items {
+                out.push_str(&format!("  • {} ({})\n", id_display, label));
             }
-        }
-        out.push('\n');
-    }
-
-    // Related Releases
-    if !releases.is_empty() {
-        out.push_str("Related Releases\n\n");
-        for rel in &releases {
-            out.push_str(rel);
             out.push('\n');
         }
-        out.push('\n');
     }
 
-    // Related Tickets
-    if !tickets.is_empty() {
-        out.push_str("Related Tickets\n\n");
-        let limit = if verbose { tickets.len() } else { 3 };
-        for t in tickets.iter().take(limit) {
-            out.push_str(t);
-            out.push('\n');
-        }
-        if !verbose && tickets.len() > limit {
-            out.push_str("...\n");
-        }
-        out.push('\n');
-    }
+    // 10. Source Information
+    out.push_str("Source Information\n------------------\n\n");
+    out.push_str(&format!("{:<14}: {}\n", "Provider", pkg.source_info.provider));
+    out.push_str(&format!("{:<14}: {}\n", "Repository", pkg.source_info.repository.as_deref().unwrap_or("N/A")));
+    out.push_str(&format!("{:<14}: {}\n", "Updated", pkg.source_info.updated_at));
+    out.push_str(&format!("{:<14}: {}\n", "Source URL", pkg.source_info.source_url));
+    out.push_str(&format!("{:<14}: {}\n\n", "Last Synced", pkg.source_info.synced_at));
 
-    // Summary
-    out.push_str("Summary\n\n");
-    let summary_narrative = build_context_narrative(art, &releases, &implementations);
-    out.push_str(&summary_narrative);
+    // Summary (Engineering Assessment)
+    out.push_str("Engineering Assessment\n----------------------\n\n");
+    out.push_str(&pkg.summary);
     out.push('\n');
 
     out.trim_end().to_string()
 }
 
-fn build_context_narrative(
-    art: &KnowledgeArtifact,
-    releases: &[String],
-    implementations: &[String],
-) -> String {
-    let clean_summary = art
-        .summary
-        .as_deref()
-        .map(|s| {
-            if s.starts_with("Status: ") {
-                s["Status: ".len()..].trim()
-            } else {
-                s
+fn format_dots(label: &str, value: &str, total_width: usize) -> String {
+    let label_chars = label.chars().count();
+    let val_chars = value.chars().count();
+    let needed = total_width.saturating_sub(label_chars + val_chars + 2);
+    let dots = ".".repeat(needed.max(3));
+    format!("{} {} {}", label, dots, value)
+}
+
+fn group_related_artifacts(pkg: &atlas_core::ContextPackage) -> Vec<(String, Vec<(String, String)>)> {
+    let mut groups: std::collections::HashMap<String, Vec<(String, String)>> = std::collections::HashMap::new();
+
+    let all_collections = [
+        &pkg.architecture_decisions,
+        &pkg.apis,
+        &pkg.related_pull_requests,
+        &pkg.related_commits,
+        &pkg.related_documentation,
+        &pkg.implementation_history,
+        &pkg.related_artifacts,
+    ];
+
+    for col in all_collections {
+        for item in col {
+            let cat_name = item.relationship_category.clone();
+            let id_display = format_related_item(&item.artifact);
+            let entry = groups.entry(cat_name).or_default();
+            if !entry.iter().any(|(id, _)| id == &id_display) {
+                entry.push((id_display, item.relationship_label.clone()));
             }
-        })
-        .unwrap_or("");
-
-    let base_text = if !clean_summary.is_empty() && clean_summary.len() > 5 {
-        let mut chars = clean_summary.chars();
-        let first = chars.next().unwrap().to_lowercase().to_string();
-        format!("This feature {}{}", first, chars.as_str())
-    } else {
-        format!("This feature relates to {}", art.title)
-    };
-
-    if let Some(rel) = releases.first() {
-        format!("{} and was released in {}.", base_text.trim_end_matches('.'), rel)
-    } else if let Some(pr) = implementations.first() {
-        format!("{} via {}.", base_text.trim_end_matches('.'), pr)
-    } else {
-        format!("{}.", base_text.trim_end_matches('.'))
+        }
     }
+
+    if !pkg.affected_repositories.is_empty() {
+        let repo_items: Vec<(String, String)> = pkg.affected_repositories.iter().map(|r| (r.clone(), "target repo".to_string())).collect();
+        groups.insert("Repositories".to_string(), repo_items);
+    }
+
+    let mut result: Vec<(String, Vec<(String, String)>)> = groups.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    result
 }
 
 #[cfg(test)]
@@ -877,15 +853,121 @@ mod tests {
     #[test]
     fn test_format_context_package() {
         let art = mock_artifact();
-        let formatted = format_context_package(&art, &[], false, false);
+        let pkg = atlas_core::ContextPackage {
+            target_kind: "issue".to_string(),
+            target_id: "INIT-219".to_string(),
+            primary_artifact: Some(art),
+            title: "MongoDB Atlas Migration".to_string(),
+            status: "Done".to_string(),
+            repository: Some("INIT".to_string()),
+            description: Some("Migrate MongoDB infrastructure to Atlas...".to_string()),
+            engineering_readiness: atlas_core::EngineeringReadiness {
+                status_label: "Ready for implementation.".to_string(),
+                readiness_summary: "Atlas found sufficient context.".to_string(),
+                available: vec!["Repository".to_string()],
+                missing: vec!["Pull Requests".to_string()],
+            },
+            completeness: atlas_core::CompletenessReport {
+                score_percentage: 62,
+                progress_bar: "██████░░░░".to_string(),
+                available_categories: vec![atlas_core::CategoryAvailability {
+                    category: "Repository".to_string(),
+                    is_available: true,
+                    count: 1,
+                    label: "1 Repository".to_string(),
+                }],
+                missing_categories: vec![atlas_core::CategoryAvailability {
+                    category: "Previous PRs".to_string(),
+                    is_available: false,
+                    count: 0,
+                    label: "Previous Pull Requests".to_string(),
+                }],
+            },
+            recommended_reading: vec![atlas_core::RecommendedItem {
+                id: "adr-007".to_string(),
+                source_id: "ADR-007".to_string(),
+                title: "MongoDB Architecture".to_string(),
+                kind: "document".to_string(),
+                relationship_label: "defines architecture".to_string(),
+                score: 85.0,
+                reason: "Architecture Decision (ADR) guideline".to_string(),
+            }],
+            implementation_hints: vec!["Review ADR-007 before implementation.".to_string()],
+            suggested_next_actions: vec![atlas_core::NextAction {
+                step: 1,
+                action: "Review ADR-007".to_string(),
+                detail: "Architecture guideline".to_string(),
+                command: None,
+            }],
+            affected_repositories: vec!["INIT".to_string()],
+            related_artifacts: vec![],
+            dependency_graph: vec![],
+            implementation_history: vec![],
+            related_pull_requests: vec![],
+            related_commits: vec![],
+            related_documentation: vec![],
+            apis: vec![],
+            architecture_decisions: vec![atlas_core::LabeledArtifact {
+                artifact: KnowledgeArtifact {
+                    id: "adr-7".to_string(),
+                    kind: ArtifactKind::Document,
+                    title: "MongoDB Architecture".to_string(),
+                    summary: None,
+                    body: "".to_string(),
+                    provider: "confluence".to_string(),
+                    source_id: "ADR-007".to_string(),
+                    source_url: "".to_string(),
+                    repository: None,
+                    tags: vec!["adr".to_string()],
+                    relationships: vec![],
+                    created_at: None,
+                    updated_at: Utc::now(),
+                    synced_at: Utc::now(),
+                    checksum: "".to_string(),
+                    metadata: serde_json::Value::Null,
+                },
+                relationship_label: "defines architecture".to_string(),
+                relationship_category: "Architecture / Docs".to_string(),
+                score: 85.0,
+                is_direct_graph: true,
+            }],
+            source_info: atlas_core::SourceInfo {
+                provider: "Jira".to_string(),
+                repository: Some("INIT".to_string()),
+                source_url: "https://jira.example.com/browse/INIT-219".to_string(),
+                updated_at: "2026-07-30".to_string(),
+                synced_at: "2026-07-31 15:45 UTC".to_string(),
+            },
+            summary: "Implementation can begin. Business requirements are available.".to_string(),
+        };
 
-        assert!(formatted.contains("Engineering Context"));
-        assert!(formatted.contains("Artifact\n\nINIT-219\nMongoDB Atlas"));
-        assert!(formatted.contains("Requirement\n\nMigrate MongoDB infrastructure to Atlas..."));
-        assert!(formatted.contains("Design Documents\n\nADR-007"));
-        assert!(formatted.contains("Implementation\n\n#212"));
-        assert!(formatted.contains("Commits\n\na31ef2d"));
-        assert!(formatted.contains("Related Tickets\n\nDEV-1101\nDEV-1102\nDEV-1103\n..."));
-        assert!(formatted.contains("Summary\n\nThis feature migrate MongoDB infrastructure to Atlas via #212."));
+        let formatted = format_context_package(&pkg, false, false);
+
+        assert!(formatted.contains("Context for INIT-219"));
+        assert!(formatted.contains("Title\n-----\nMongoDB Atlas Migration"));
+        assert!(formatted.contains("Status\n------\nDone"));
+        assert!(formatted.contains("Repository\n----------\nINIT"));
+        assert!(formatted.contains("Engineering Readiness"));
+        assert!(formatted.contains("Ready for implementation."));
+        assert!(formatted.contains("✓ Repository"));
+        assert!(formatted.contains("✗ Pull Requests"));
+        assert!(formatted.contains("Context Completeness"));
+        assert!(formatted.contains("██████░░░░ 62%"));
+        assert!(formatted.contains("Scoring"));
+        assert!(formatted.contains("Repository"));
+        assert!(formatted.contains("Recommended Reading"));
+        assert!(formatted.contains("1. ADR-007"));
+        assert!(formatted.contains("MongoDB Architecture"));
+        assert!(formatted.contains("Implementation Hints"));
+        assert!(formatted.contains("• Review ADR-007 before implementation."));
+        assert!(formatted.contains("Suggested Next Actions"));
+        assert!(formatted.contains("1. Review ADR-007"));
+        assert!(formatted.contains("Related Artifacts"));
+        assert!(formatted.contains("• ADR-007 (defines architecture)"));
+        assert!(formatted.contains("Source Information"));
+        assert!(formatted.contains("Provider"));
+        assert!(formatted.contains("Jira"));
+        assert!(formatted.contains("Engineering Assessment"));
+        assert!(formatted.contains("Implementation can begin."));
     }
 }

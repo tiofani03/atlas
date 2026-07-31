@@ -116,10 +116,13 @@ enum Commands {
         raw: bool,
     },
 
-    /// Build and display an Engineering Context Package for an artifact
+    /// Build AI-ready engineering context for an issue, PR, repository, ADR, or artifact ID
     Context {
-        /// Artifact ID or source_id (e.g., INIT-219)
-        id: String,
+        /// Context target type (e.g., issue, pr, repository, adr) or artifact ID
+        target: String,
+
+        /// Artifact ID, source ID, or repository name (when target type is specified)
+        target_id: Option<String>,
 
         /// Output result as JSON
         #[arg(long)]
@@ -497,7 +500,8 @@ async fn main() -> Result<()> {
         }
 
         Commands::Context {
-            id,
+            target,
+            target_id,
             json,
             verbose,
             raw,
@@ -505,26 +509,22 @@ async fn main() -> Result<()> {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
-            match storage.get_artifact_by_id(&id)? {
-                Some(artifact) => {
-                    let related = storage.get_related_artifacts(&id).unwrap_or_default();
+            let (kind_param, id_param) = match target_id {
+                Some(ref id) => (Some(target.as_str()), id.as_str()),
+                None => (None, target.as_str()),
+            };
 
-                    if json {
-                        let payload = serde_json::json!({
-                            "artifact": artifact,
-                            "related": related
-                        });
-                        println!("{}", serde_json::to_string_pretty(&payload)?);
-                    } else {
-                        println!(
-                            "{}",
-                            formatter::format_context_package(&artifact, &related, verbose, raw)
-                        );
-                    }
-                }
-                None => {
-                    println!("Artifact '{}' not found.", id);
-                }
+            let builder = atlas_core::ContextBuilder::new(&storage);
+            let options = atlas_core::ContextOptions::default();
+            let pkg = builder.build(kind_param, id_param, &options)?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&pkg)?);
+            } else {
+                println!(
+                    "{}",
+                    formatter::format_context_package(&pkg, verbose, raw)
+                );
             }
         }
 

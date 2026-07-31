@@ -78,3 +78,34 @@ pub async fn get_object_by_id(
     }
 }
 
+#[derive(Deserialize)]
+pub struct ContextQueryParams {
+    pub kind: Option<String>,
+}
+
+pub async fn get_context(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(params): Query<ContextQueryParams>,
+) -> impl IntoResponse {
+    let storage = match state.get_storage() {
+        Ok(s) => s,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            )
+        }
+    };
+
+    let builder = atlas_core::ContextBuilder::new(&storage);
+    let options = atlas_core::ContextOptions::default();
+    match builder.build(params.kind.as_deref(), &id, &options) {
+        Ok(pkg) => (StatusCode::OK, Json(serde_json::json!(pkg))),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        ),
+    }
+}
+

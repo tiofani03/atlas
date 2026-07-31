@@ -127,19 +127,20 @@ impl Storage {
                 tokenize = 'porter unicode61'
             );
 
+            DROP TRIGGER IF EXISTS ka_ad;
+            DROP TRIGGER IF EXISTS ka_au;
+
             CREATE TRIGGER IF NOT EXISTS ka_ai AFTER INSERT ON knowledge_artifacts BEGIN
                 INSERT INTO knowledge_fts(id, title, summary, body, tags, repository, kind, provider, source_id)
                 VALUES (new.id, new.title, COALESCE(new.summary, ''), new.body, new.tags, COALESCE(new.repository, ''), new.kind, new.provider, new.source_id);
             END;
 
-            CREATE TRIGGER IF NOT EXISTS ka_ad AFTER DELETE ON knowledge_artifacts BEGIN
-                INSERT INTO knowledge_fts(knowledge_fts, id, title, summary, body, tags, repository, kind, provider, source_id)
-                VALUES ('delete', old.id, old.title, COALESCE(old.summary, ''), old.body, old.tags, COALESCE(old.repository, ''), old.kind, old.provider, old.source_id);
+            CREATE TRIGGER ka_ad AFTER DELETE ON knowledge_artifacts BEGIN
+                DELETE FROM knowledge_fts WHERE id = old.id;
             END;
 
-            CREATE TRIGGER IF NOT EXISTS ka_au AFTER UPDATE ON knowledge_artifacts BEGIN
-                INSERT INTO knowledge_fts(knowledge_fts, id, title, summary, body, tags, repository, kind, provider, source_id)
-                VALUES ('delete', old.id, old.title, COALESCE(old.summary, ''), old.body, old.tags, COALESCE(old.repository, ''), old.kind, old.provider, old.source_id);
+            CREATE TRIGGER ka_au AFTER UPDATE ON knowledge_artifacts BEGIN
+                DELETE FROM knowledge_fts WHERE id = old.id;
                 INSERT INTO knowledge_fts(id, title, summary, body, tags, repository, kind, provider, source_id)
                 VALUES (new.id, new.title, COALESCE(new.summary, ''), new.body, new.tags, COALESCE(new.repository, ''), new.kind, new.provider, new.source_id);
             END;

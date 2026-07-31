@@ -1,5 +1,6 @@
 pub mod config;
 pub mod connectors;
+pub mod context;
 pub mod domain;
 pub mod mcp;
 pub mod storage;
@@ -10,7 +11,12 @@ pub use connectors::{
     confluence::ConfluenceConnector, github::GithubConnector, jira::JiraConnector, Connector,
     ConnectorInstance,
 };
+pub use context::{
+    CategoryAvailability, CompletenessReport, ContextBuilder, ContextOptions, ContextPackage,
+    DependencyEdge, EngineeringReadiness, LabeledArtifact, NextAction, RecommendedItem, SourceInfo,
+};
 pub use domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
 pub use storage::{Storage, StorageStats};
 pub use sync::{SyncEngine, SyncSummary};
+
 
