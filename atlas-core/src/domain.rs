@@ -1,88 +1,118 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::str::FromStr;
 
-/// High-level categories of normalized knowledge objects
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Extensible kinds of normalized engineering artifacts
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum ObjectType {
+pub enum ArtifactKind {
+    Repository,
+    Issue,
+    PullRequest,
+    PullRequestReview,
+    ReviewComment,
+    Commit,
+    Release,
+    Discussion,
+    WorkflowRun,
+    Deployment,
     Ticket,
     Document,
     Specification,
     Design,
     Component,
+    Other(String),
 }
 
-impl std::fmt::Display for ObjectType {
+impl std::fmt::Display for ArtifactKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ObjectType::Ticket => write!(f, "ticket"),
-            ObjectType::Document => write!(f, "document"),
-            ObjectType::Specification => write!(f, "specification"),
-            ObjectType::Design => write!(f, "design"),
-            ObjectType::Component => write!(f, "component"),
+            ArtifactKind::Repository => write!(f, "repository"),
+            ArtifactKind::Issue => write!(f, "issue"),
+            ArtifactKind::PullRequest => write!(f, "pull_request"),
+            ArtifactKind::PullRequestReview => write!(f, "pull_request_review"),
+            ArtifactKind::ReviewComment => write!(f, "review_comment"),
+            ArtifactKind::Commit => write!(f, "commit"),
+            ArtifactKind::Release => write!(f, "release"),
+            ArtifactKind::Discussion => write!(f, "discussion"),
+            ArtifactKind::WorkflowRun => write!(f, "workflow_run"),
+            ArtifactKind::Deployment => write!(f, "deployment"),
+            ArtifactKind::Ticket => write!(f, "ticket"),
+            ArtifactKind::Document => write!(f, "document"),
+            ArtifactKind::Specification => write!(f, "specification"),
+            ArtifactKind::Design => write!(f, "design"),
+            ArtifactKind::Component => write!(f, "component"),
+            ArtifactKind::Other(s) => write!(f, "{}", s),
         }
     }
 }
 
-impl std::str::FromStr for ObjectType {
-    type Err = String;
+impl FromStr for ArtifactKind {
+    type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "ticket" => Ok(ObjectType::Ticket),
-            "document" => Ok(ObjectType::Document),
-            "specification" => Ok(ObjectType::Specification),
-            "design" => Ok(ObjectType::Design),
-            "component" => Ok(ObjectType::Component),
-            _ => Err(format!("Unknown object type: {}", s)),
-        }
+        let kind = match s.to_lowercase().as_str() {
+            "repository" | "repo" => ArtifactKind::Repository,
+            "issue" => ArtifactKind::Issue,
+            "pull_request" | "pullrequest" | "pr" => ArtifactKind::PullRequest,
+            "pull_request_review" | "pullrequestreview" | "review" => ArtifactKind::PullRequestReview,
+            "review_comment" | "reviewcomment" => ArtifactKind::ReviewComment,
+            "commit" => ArtifactKind::Commit,
+            "release" => ArtifactKind::Release,
+            "discussion" => ArtifactKind::Discussion,
+            "workflow_run" | "workflowrun" => ArtifactKind::WorkflowRun,
+            "deployment" => ArtifactKind::Deployment,
+            "ticket" => ArtifactKind::Ticket,
+            "document" => ArtifactKind::Document,
+            "specification" => ArtifactKind::Specification,
+            "design" => ArtifactKind::Design,
+            "component" => ArtifactKind::Component,
+            other => ArtifactKind::Other(other.to_string()),
+        };
+        Ok(kind)
     }
 }
 
-/// Link or reference between knowledge objects
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Relationship {
+/// Generic directed relationship between engineering artifacts
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct ArtifactRelationship {
+    pub source_id: String,
     pub target_id: String,
     pub relationship_type: String,
 }
 
-/// Provenance information for a knowledge object
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SourceInfo {
-    pub provider: String,     // e.g. "jira", "confluence"
-    pub instance_url: String, // e.g. "https://company.atlassian.net"
-    pub original_id: String,  // e.g. "PAY-1042" or page ID "1928374"
-    pub web_url: String,      // Direct link to the source document/ticket
-}
-
-/// The canonical, normalized knowledge record in Atlas
+/// The canonical, normalized engineering artifact record in Atlas
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KnowledgeObject {
-    /// Deterministic UUID or composite key: provider:instance:original_id
+pub struct KnowledgeArtifact {
+    /// Deterministic UUID or composite key: provider:instance:source_id
     pub id: String,
-    pub object_type: ObjectType,
+    pub kind: ArtifactKind,
     pub title: String,
     pub summary: Option<String>,
-    pub content: String,
+    pub body: String,
+    pub provider: String,
+    pub source_id: String,
+    pub source_url: String,
+    pub repository: Option<String>,
     pub tags: Vec<String>,
-    pub relationships: Vec<Relationship>,
-    pub source: SourceInfo,
-    pub source_metadata: serde_json::Value,
+    pub relationships: Vec<ArtifactRelationship>,
+    pub created_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
     pub synced_at: DateTime<Utc>,
     pub checksum: String,
+    pub metadata: serde_json::Value,
 }
 
-impl KnowledgeObject {
-    /// Compute deterministic ID from source info
-    pub fn generate_id(provider: &str, instance_url: &str, original_id: &str) -> String {
+impl KnowledgeArtifact {
+    /// Compute deterministic ID from provider, instance_url, and source_id
+    pub fn generate_id(provider: &str, instance_url: &str, source_id: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(provider.as_bytes());
         hasher.update(b":");
         hasher.update(instance_url.as_bytes());
         hasher.update(b":");
-        hasher.update(original_id.as_bytes());
+        hasher.update(source_id.as_bytes());
         format!("{:x}", hasher.finalize())
     }
 
@@ -90,16 +120,17 @@ impl KnowledgeObject {
     pub fn compute_checksum(
         title: &str,
         summary: Option<&str>,
-        content: &str,
+        body: &str,
         tags: &[String],
     ) -> String {
         let mut hasher = Sha256::new();
         hasher.update(title.as_bytes());
         hasher.update(summary.unwrap_or("").as_bytes());
-        hasher.update(content.as_bytes());
+        hasher.update(body.as_bytes());
         for tag in tags {
             hasher.update(tag.as_bytes());
         }
         format!("{:x}", hasher.finalize())
     }
 }
+

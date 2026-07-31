@@ -1,6 +1,6 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
-use crate::domain::{KnowledgeObject, ObjectType, Relationship, SourceInfo};
+use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
@@ -57,7 +57,7 @@ impl Connector for JiraConnector {
         "jira"
     }
 
-    async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeObject>> {
+    async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let mut jql = String::new();
 
         if !self.config.projects.is_empty() {
@@ -210,11 +210,19 @@ impl Connector for JiraConnector {
                 .unwrap_or("Unknown");
 
             let desc_val = fields.get("description");
-            let content = match desc_val {
+            let body = match desc_val {
                 Some(v) if v.is_object() => Self::extract_adf_text(v),
                 Some(v) if v.is_string() => v.as_str().unwrap_or("").to_string(),
                 _ => String::new(),
             };
+
+            let created_str = fields
+                .get("created")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let created_at = DateTime::parse_from_rfc3339(created_str)
+                .map(|d| d.with_timezone(&Utc))
+                .ok();
 
             let updated_str = fields
                 .get("updated")
@@ -224,6 +232,7 @@ impl Connector for JiraConnector {
                 .map(|d| d.with_timezone(&Utc))
                 .unwrap_or(now);
 
+            let mut project_key_opt = None;
             let mut tags = Vec::new();
             if let Some(labels) = fields.get("labels").and_then(|v| v.as_array()) {
                 for label in labels {
@@ -238,6 +247,7 @@ impl Connector for JiraConnector {
                 .and_then(|v| v.as_str())
             {
                 tags.push(format!("project:{}", project_key));
+                project_key_opt = Some(project_key.to_string());
             }
 
             let mut relationships = Vec::new();
@@ -252,12 +262,9 @@ impl Connector for JiraConnector {
 
                     if let Some(out_issue) = link.get("outwardIssue").and_then(|v| v.get("key")) {
                         if let Some(target_key) = out_issue.as_str() {
-                            relationships.push(Relationship {
-                                target_id: KnowledgeObject::generate_id(
-                                    "jira",
-                                    &self.config.instance_url,
-                                    target_key,
-                                ),
+                            relationships.push(ArtifactRelationship {
+                                source_id: key.clone(),
+                                target_id: target_key.to_string(),
                                 relationship_type: rel_type.clone(),
                             });
                         }
@@ -271,38 +278,38 @@ impl Connector for JiraConnector {
                 key
             );
 
-            let id = KnowledgeObject::generate_id("jira", &self.config.instance_url, &key);
-            let checksum = KnowledgeObject::compute_checksum(
+            let id = KnowledgeArtifact::generate_id("jira", &self.config.instance_url, &key);
+            let checksum = KnowledgeArtifact::compute_checksum(
                 &summary,
                 Some(status_name),
-                &content,
+                &body,
                 &tags,
             );
 
-            objects.push(KnowledgeObject {
+            objects.push(KnowledgeArtifact {
                 id,
-                object_type: ObjectType::Ticket,
+                kind: ArtifactKind::Ticket,
                 title: summary,
                 summary: Some(format!("Status: {}", status_name)),
-                content,
+                body,
+                provider: "jira".to_string(),
+                source_id: key,
+                source_url: web_url,
+                repository: project_key_opt,
                 tags,
                 relationships,
-                source: SourceInfo {
-                    provider: "jira".to_string(),
-                    instance_url: self.config.instance_url.clone(),
-                    original_id: key,
-                    web_url,
-                },
-                source_metadata: fields.clone(),
+                created_at,
                 updated_at,
                 synced_at: now,
                 checksum,
+                metadata: fields.clone(),
             });
         }
 
         Ok(objects)
     }
 }
+
 
 fn base64_encode(input: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

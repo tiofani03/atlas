@@ -1,25 +1,125 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-main: #09090b;
+  --bg-card: rgba(39, 39, 42, 0.6);
+  --bg-panel: rgba(24, 24, 27, 0.75);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-main: #f4f4f5;
+  --text-subtle: #a1a1aa;
+}
+
+html.light {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-panel: #ffffff;
+  --border-color: #e2e8f0;
+  --text-main: #0f172a;
+  --text-subtle: #475569;
+}
+
 @layer base {
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
   code, pre {
     font-family: 'JetBrains Mono', monospace;
   }
 }
 
+/* Custom Text Selection Highlight (Indigo Blue) */
+::selection {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
+html.light ::selection {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
+html.light ::-moz-selection {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
 /* Glassmorphism utilities */
 .glass-panel {
-  background: rgba(24, 24, 27, 0.75);
+  background: var(--bg-panel);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
 }
 
 .glass-card {
-  background: rgba(39, 39, 42, 0.6);
+  background: var(--bg-card);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+/* Clean Light Mode overrides without breaking colored icon badges */
+html.light body,
+html.light main {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html.light aside {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+}
+
+html.light header {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: #e2e8f0;
+}
+
+html.light .glass-card,
+html.light .glass-panel {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+html.light .glass-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+}
+
+/* Text overrides in Light Mode only for main headings and zinc muted texts */
+html.light h1, html.light h2, html.light h3, html.light h4 {
+  color: #0f172a;
+}
+
+html.light p.text-zinc-400,
+html.light p.text-zinc-500,
+html.light span.text-zinc-400,
+html.light span.text-zinc-500 {
+  color: #64748b;
+}
+
+/* Navigation items in sidebar for light mode */
+html.light nav button {
+  color: #475569;
+}
+html.light nav button:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+html.light nav button.bg-zinc-800 {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
 }
 
 /* Custom scrollbars */
@@ -30,10 +130,13 @@
 ::-webkit-scrollbar-track {
   background: rgba(24, 24, 27, 0.5);
 }
+html.light ::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+}
 ::-webkit-scrollbar-thumb {
   background: rgba(63, 63, 70, 0.8);
   border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(82, 82, 91, 1);
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.9);
 }

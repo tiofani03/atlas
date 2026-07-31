@@ -21,6 +21,10 @@ pub fn create_router(state: AppState) -> Router {
             post(connectors::save_confluence_connector),
         )
         .route(
+            "/api/connectors/github",
+            post(connectors::save_github_connector),
+        )
+        .route(
             "/api/connectors/validate",
             post(connectors::validate_credentials),
         )

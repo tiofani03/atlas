@@ -10,8 +10,10 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct SearchQueryParams {
     pub query: Option<String>,
+    pub kind: Option<String>,
     pub object_type: Option<String>,
     pub tag: Option<String>,
+    pub repository: Option<String>,
     pub limit: Option<usize>,
 }
 
@@ -30,13 +32,15 @@ pub async fn search_objects(
     };
 
     let limit = params.limit.unwrap_or(20);
+    let kind = params.kind.or(params.object_type);
 
     let query_str = params.query.unwrap_or_default();
     let results = if !query_str.trim().is_empty() {
-        storage.search_fts(&query_str, limit)
+        storage.search_fts(&query_str, kind.as_deref(), params.tag.as_deref(), params.repository.as_deref(), limit)
     } else {
-        storage.query_structured(params.object_type.as_deref(), params.tag.as_deref(), limit)
+        storage.query_structured(kind.as_deref(), params.tag.as_deref(), params.repository.as_deref(), limit)
     };
+
 
     match results {
         Ok(objs) => (StatusCode::OK, Json(serde_json::json!(objs))),
@@ -61,11 +65,11 @@ pub async fn get_object_by_id(
         }
     };
 
-    match storage.get_object_by_id(&id) {
+    match storage.get_artifact_by_id(&id) {
         Ok(Some(obj)) => (StatusCode::OK, Json(serde_json::json!(obj))),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": format!("KnowledgeObject with ID '{}' not found", id) })),
+            Json(serde_json::json!({ "error": format!("KnowledgeArtifact with ID '{}' not found", id) })),
         ),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -73,3 +77,4 @@ pub async fn get_object_by_id(
         ),
     }
 }
+

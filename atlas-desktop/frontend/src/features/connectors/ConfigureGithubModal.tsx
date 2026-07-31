@@ -8,12 +8,11 @@ interface ModalProps {
   onSuccess: () => void;
 }
 
-export const ConfigureJiraModal: React.FC<ModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [id, setId] = useState('jira-main');
-  const [instanceUrl, setInstanceUrl] = useState('https://company.atlassian.net');
-  const [email, setEmail] = useState('');
+export const ConfigureGithubModal: React.FC<ModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const [id, setId] = useState('github-main');
+  const [instanceUrl, setInstanceUrl] = useState('https://api.github.com');
   const [apiToken, setApiToken] = useState('');
-  const [projects, setProjects] = useState('PAY,DEV');
+  const [repos, setRepos] = useState('owner/repository');
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,9 +24,9 @@ export const ConfigureJiraModal: React.FC<ModalProps> = ({ isOpen, onClose, onSu
     setValidationResult(null);
     try {
       const res = await api.validateCredentials({
-        provider: 'jira',
+        provider: 'github',
         instance_url: instanceUrl,
-        email,
+        email: '',
         api_token: apiToken,
       });
       setValidationResult(res);
@@ -42,13 +41,12 @@ export const ConfigureJiraModal: React.FC<ModalProps> = ({ isOpen, onClose, onSu
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const projArray = projects.split(',').map((p) => p.trim()).filter(Boolean);
-      await api.saveJiraConnector({
+      const repoArray = repos.split(',').map((r) => r.trim()).filter(Boolean);
+      await api.saveGithubConnector({
         id,
         instance_url: instanceUrl,
-        email,
         api_token: apiToken,
-        projects: projArray,
+        repos: repoArray,
       });
       onSuccess();
       onClose();
@@ -64,10 +62,10 @@ export const ConfigureJiraModal: React.FC<ModalProps> = ({ isOpen, onClose, onSu
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl w-full max-w-md p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-200 dark:border-blue-500/30">
-              J
+            <div className="w-6 h-6 rounded bg-purple-50 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-xs border border-purple-200 dark:border-purple-500/30">
+              GH
             </div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">Configure Jira Connector</h3>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">Configure GitHub Connector</h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:text-zinc-400 dark:hover:text-zinc-200">
             <X className="w-4 h-4" />
@@ -87,48 +85,36 @@ export const ConfigureJiraModal: React.FC<ModalProps> = ({ isOpen, onClose, onSu
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Base URL</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">API Base URL</label>
             <input
               type="url"
               value={instanceUrl}
               onChange={(e) => setInstanceUrl(e.target.value)}
-              placeholder="https://company.atlassian.net"
+              placeholder="https://api.github.com"
               required
-              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@company.com"
-              required
-              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">API Token</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Personal Access Token (PAT)</label>
             <input
               type="password"
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
-              placeholder="Atlassian API Token"
-              required
+              placeholder="ghp_... or github_pat_..."
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Projects (comma-separated)</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Repositories (comma-separated owner/repo)</label>
             <input
               type="text"
-              value={projects}
-              onChange={(e) => setProjects(e.target.value)}
-              placeholder="PAY, DEV, ARCH"
+              value={repos}
+              onChange={(e) => setRepos(e.target.value)}
+              placeholder="owner/repo1, owner/repo2"
+              required
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 font-mono"
             />
           </div>
@@ -154,7 +140,7 @@ export const ConfigureJiraModal: React.FC<ModalProps> = ({ isOpen, onClose, onSu
             <button
               type="button"
               onClick={handleValidate}
-              disabled={isValidating || !email || !apiToken}
+              disabled={isValidating || !apiToken}
               className="px-3 py-1.5 rounded bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-medium transition disabled:opacity-50 flex items-center gap-1.5"
             >
               {isValidating && <Loader2 className="w-3 h-3 animate-spin" />}

@@ -5,6 +5,7 @@ import {
   KnowledgeObject,
   JiraConfigPayload,
   ConfluenceConfigPayload,
+  GithubConfigPayload,
 } from '../types';
 
 const API_BASE = '/api';
@@ -32,6 +33,13 @@ export const api = {
     
   saveConfluenceConnector: (data: ConfluenceConfigPayload) =>
     fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/confluence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveGithubConnector: (data: GithubConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/github`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

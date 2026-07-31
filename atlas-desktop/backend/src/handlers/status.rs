@@ -14,7 +14,8 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
                             "version": env!("CARGO_PKG_VERSION"),
                             "config_path": state.config_path.to_string_lossy(),
                             "db_path": db_path.to_string_lossy(),
-                            "total_objects": stats.total_objects,
+                            "total_artifacts": stats.total_artifacts,
+                            "total_objects": stats.total_artifacts,
                             "connectors_count": cfg.connectors.len(),
                             "db_size_bytes": stats.db_size_bytes,
                         })),
@@ -36,3 +37,5 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
         ),
     }
 }
+
+

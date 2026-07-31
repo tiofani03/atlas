@@ -11,6 +11,7 @@ pub struct ConnectorItemResponse {
     pub email: String,
     pub projects: Vec<String>,
     pub spaces: Vec<String>,
+    pub repos: Vec<String>,
     pub last_synced_at: Option<String>,
 }
 
@@ -32,6 +33,15 @@ pub struct ConfluenceConfigPayload {
     pub api_token: Option<String>,
     pub api_token_env: Option<String>,
     pub spaces: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct GithubConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub repos: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +83,7 @@ pub async fn list_connectors(State(state): State<AppState>) -> impl IntoResponse
             email: conn_cfg.email.clone(),
             projects: conn_cfg.projects.clone(),
             spaces: conn_cfg.spaces.clone(),
+            repos: conn_cfg.repos.clone(),
             last_synced_at: last_sync.map(|d| d.to_rfc3339()),
         });
     }
@@ -104,6 +115,7 @@ pub async fn save_jira_connector(
             api_token_env: payload.api_token_env,
             projects: payload.projects.unwrap_or_default(),
             spaces: Vec::new(),
+            repos: Vec::new(),
         },
     );
 
@@ -144,6 +156,48 @@ pub async fn save_confluence_connector(
             api_token_env: payload.api_token_env,
             projects: Vec::new(),
             spaces: payload.spaces.unwrap_or_default(),
+            repos: Vec::new(),
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "success": true, "id": payload.id })),
+    )
+}
+
+pub async fn save_github_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<GithubConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            )
+        }
+    };
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "github".to_string(),
+            instance_url: payload.instance_url.unwrap_or_else(|| "https://api.github.com".to_string()),
+            email: String::new(),
+            api_token: payload.api_token,
+            api_token_env: payload.api_token_env,
+            projects: Vec::new(),
+            spaces: Vec::new(),
+            repos: payload.repos.unwrap_or_default(),
         },
     );
 
@@ -171,11 +225,13 @@ pub async fn validate_credentials(
         api_token_env: None,
         projects: Vec::new(),
         spaces: Vec::new(),
+        repos: Vec::new(),
     };
 
     let result = match payload.provider.as_str() {
         "jira" => atlas_core::JiraConnector::new("test".to_string(), test_cfg).map(|_| ()),
         "confluence" => atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "github" => atlas_core::GithubConnector::new("test".to_string(), test_cfg).map(|_| ()),
         _ => Err(anyhow::anyhow!("Unsupported provider")),
     };
 
