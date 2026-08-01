@@ -28,6 +28,18 @@ pub fn create_router(state: AppState) -> Router {
             post(connectors::save_github_connector),
         )
         .route(
+            "/api/connectors/markdown",
+            post(connectors::save_markdown_connector),
+        )
+        .route(
+            "/api/connectors/local_git",
+            post(connectors::save_local_git_connector),
+        )
+        .route(
+            "/api/dialog/select-folder",
+            get(connectors::select_folder).post(connectors::select_folder),
+        )
+        .route(
             "/api/connectors/validate",
             post(connectors::validate_credentials),
         )

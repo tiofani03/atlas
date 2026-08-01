@@ -43,13 +43,37 @@ pub struct CategoryAvailability {
     pub label: String,
 }
 
+/// Category score for breakdown completeness
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CategoryScore {
+    pub category_name: String,
+    pub score_percentage: u8,
+    pub progress_bar: String,
+    pub is_available: bool,
+}
+
 /// Deterministic completeness report
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletenessReport {
     pub score_percentage: u8,
     pub progress_bar: String,
+    pub category_scores: Vec<CategoryScore>,
     pub available_categories: Vec<CategoryAvailability>,
     pub missing_categories: Vec<CategoryAvailability>,
+}
+
+/// LLM-optimized summary briefing
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AiBriefing {
+    pub feature_name: String,
+    pub primary_repository: String,
+    pub previous_prs: Vec<String>,
+    pub released_in: Vec<String>,
+    pub related_repositories: Vec<String>,
+    pub known_dependencies: Vec<String>,
+    pub architecture_documentation_status: String,
+    pub historical_implementation_status: String,
+    pub confidence_level: String,
 }
 
 /// Engineering Readiness overview
@@ -104,6 +128,7 @@ pub struct ContextPackage {
     pub related_documentation: Vec<LabeledArtifact>,
     pub apis: Vec<LabeledArtifact>,
     pub architecture_decisions: Vec<LabeledArtifact>,
+    pub ai_briefing: Option<AiBriefing>,
     pub source_info: SourceInfo,
     pub summary: String,
 }
@@ -465,6 +490,16 @@ impl<'a> ContextBuilder<'a> {
             .and_then(|a| a.repository.clone())
             .or(primary_repo);
 
+        let ai_briefing = Some(build_ai_briefing(
+            &title,
+            final_repo.as_deref(),
+            &pr_list,
+            &commit_list,
+            &other_related,
+            &affected_repositories,
+            &adr_list,
+        ));
+
         Ok(ContextPackage {
             target_kind: normalized_kind,
             target_id: clean_target_id.to_string(),
@@ -487,6 +522,7 @@ impl<'a> ContextBuilder<'a> {
             related_documentation: doc_list,
             apis: api_list,
             architecture_decisions: adr_list,
+            ai_briefing,
             source_info,
             summary,
         })
@@ -497,9 +533,11 @@ impl<'a> ContextBuilder<'a> {
         kind: &str,
         target_id: &str,
     ) -> Result<(Option<KnowledgeArtifact>, Option<String>)> {
-        if let Ok(Some(art)) = self.storage.get_artifact_by_id(target_id) {
-            let repo = art.repository.clone();
-            return Ok((Some(art), repo));
+        if let Ok(matches) = self.storage.resolve_artifact_by_alias(target_id) {
+            if let Some(art) = matches.into_iter().next() {
+                let repo = art.repository.clone();
+                return Ok((Some(art), repo));
+            }
         }
 
         match kind {
@@ -794,6 +832,64 @@ fn compute_completeness(
 ) -> CompletenessReport {
     let mut available = Vec::new();
     let mut missing = Vec::new();
+    let mut category_scores = Vec::new();
+
+    // Category breakdown calculation for Phase 5
+    let biz_score: u8 = if has_primary { 100 } else { 0 };
+    let biz_bar = if has_primary { "█".repeat(10) } else { "░".repeat(10) };
+    category_scores.push(CategoryScore {
+        category_name: "Business Context".to_string(),
+        score_percentage: biz_score,
+        progress_bar: biz_bar,
+        is_available: has_primary,
+    });
+
+    let has_impl = !prs.is_empty() || !commits.is_empty() || !history.is_empty();
+    let impl_score: u8 = if has_impl { 100 } else { 0 };
+    let impl_bar = if has_impl { "█".repeat(10) } else { "░".repeat(10) };
+    category_scores.push(CategoryScore {
+        category_name: "Implementation Context".to_string(),
+        score_percentage: impl_score,
+        progress_bar: impl_bar,
+        is_available: has_impl,
+    });
+
+    let has_repo = !repos.is_empty();
+    let repo_score: u8 = if has_repo { 100 } else { 0 };
+    let repo_bar = if has_repo { "█".repeat(10) } else { "░".repeat(10) };
+    category_scores.push(CategoryScore {
+        category_name: "Repository Knowledge".to_string(),
+        score_percentage: repo_score,
+        progress_bar: repo_bar,
+        is_available: has_repo,
+    });
+
+    let arch_score: u8 = if !adrs.is_empty() {
+        100
+    } else if !apis.is_empty() {
+        30
+    } else {
+        0
+    };
+    let arch_filled = ((arch_score as usize + 5) / 10).min(10);
+    let arch_bar = format!("{}{}", "█".repeat(arch_filled), "░".repeat(10 - arch_filled));
+    category_scores.push(CategoryScore {
+        category_name: "Architecture Context".to_string(),
+        score_percentage: arch_score,
+        progress_bar: arch_bar,
+        is_available: !adrs.is_empty() || !apis.is_empty(),
+    });
+
+    let has_doc = !docs.is_empty();
+    let doc_score: u8 = if has_doc { 100 } else { 0 };
+    let doc_bar = if has_doc { "█".repeat(10) } else { "░".repeat(10) };
+    category_scores.push(CategoryScore {
+        category_name: "Documentation".to_string(),
+        score_percentage: doc_score,
+        progress_bar: doc_bar,
+        is_available: has_doc,
+    });
+
     let mut total_score: u32 = 0;
 
     if has_primary {
@@ -940,6 +1036,7 @@ fn compute_completeness(
     CompletenessReport {
         score_percentage,
         progress_bar,
+        category_scores,
         available_categories: available,
         missing_categories: missing,
     }
@@ -1137,4 +1234,81 @@ fn build_engineering_assessment(
     }
 
     lines.join("\n")
+}
+
+fn build_ai_briefing(
+    title: &str,
+    repo: Option<&str>,
+    prs: &[LabeledArtifact],
+    commits: &[LabeledArtifact],
+    other_related: &[LabeledArtifact],
+    affected_repos: &[String],
+    adrs: &[LabeledArtifact],
+) -> AiBriefing {
+    let feature_name = title.to_string();
+    let primary_repository = repo.unwrap_or("Unknown").to_string();
+    let previous_prs = prs
+        .iter()
+        .map(|p| {
+            let pid = &p.artifact.source_id;
+            let pr_num = if pid.contains('#') {
+                if let Some(pos) = pid.rfind('#') {
+                    pid[pos..].to_string()
+                } else {
+                    pid.to_string()
+                }
+            } else if !pid.starts_with('#') && pid.chars().all(|c| c.is_ascii_digit()) {
+                format!("#{}", pid)
+            } else {
+                pid.to_string()
+            };
+            format!("PR {} ({})", pr_num, p.artifact.title)
+        })
+        .collect();
+
+    let released_in = other_related
+        .iter()
+        .filter(|a| a.artifact.kind == ArtifactKind::Release)
+        .map(|r| r.artifact.title.clone())
+        .collect();
+
+    let related_repositories = affected_repos.to_vec();
+
+    let known_dependencies = other_related
+        .iter()
+        .filter(|a| a.artifact.kind == ArtifactKind::Ticket || a.artifact.kind == ArtifactKind::Issue)
+        .map(|t| t.artifact.source_id.clone())
+        .collect();
+
+    let arch_status = if !adrs.is_empty() {
+        "Available".to_string()
+    } else {
+        "Not available".to_string()
+    };
+
+    let impl_status = if !prs.is_empty() || !commits.is_empty() {
+        format!("Available ({} PRs, {} commits)", prs.len(), commits.len())
+    } else {
+        "Not available".to_string()
+    };
+
+    let confidence = if !prs.is_empty() && !affected_repos.is_empty() {
+        "High".to_string()
+    } else if !commits.is_empty() {
+        "Moderate".to_string()
+    } else {
+        "Low".to_string()
+    };
+
+    AiBriefing {
+        feature_name,
+        primary_repository,
+        previous_prs,
+        released_in,
+        related_repositories,
+        known_dependencies,
+        architecture_documentation_status: arch_status,
+        historical_implementation_status: impl_status,
+        confidence_level: confidence,
+    }
 }

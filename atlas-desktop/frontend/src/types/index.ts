@@ -10,12 +10,15 @@ export interface StatusInfo {
 
 export interface ConnectorInfo {
   id: string;
-  provider: 'jira' | 'confluence' | 'github' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'notion' | 'gitlab' | 'bitbucket';
+  provider: 'jira' | 'confluence' | 'github' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'local_git' | 'notion' | 'gitlab' | 'bitbucket';
   instance_url: string;
   email: string;
   projects: string[];
   spaces: string[];
   repos: string[];
+  path?: string;
+  paths?: string[];
+  glob_patterns?: string[];
   last_synced_at: string | null;
 }
 
@@ -68,6 +71,14 @@ export interface KnowledgeArtifact {
 
 export type KnowledgeObject = KnowledgeArtifact;
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
 export interface JiraConfigPayload {
   id: string;
   instance_url: string;
@@ -90,4 +101,18 @@ export interface GithubConfigPayload {
   api_token?: string;
   repos?: string[];
 }
+
+export interface MarkdownConfigPayload {
+  id: string;
+  path?: string;
+  paths?: string[];
+  glob_patterns?: string[];
+}
+
+export interface LocalGitConfigPayload {
+  id: string;
+  path?: string;
+  paths?: string[];
+}
+
 

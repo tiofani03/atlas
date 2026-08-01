@@ -214,12 +214,20 @@ impl Storage {
         let clean_query = query.trim().replace('"', "");
         let formatted_query = if clean_query.is_empty() {
             "*".to_string()
+        } else if clean_query.contains('-')
+            || clean_query.contains(':')
+            || clean_query.contains('/')
+            || clean_query.contains('\\')
+            || clean_query.contains(' ')
+        {
+            format!("\"{}\"", clean_query)
         } else if clean_query.ends_with('*') {
             clean_query
         } else {
             format!("{}*", clean_query)
         };
-        let mut stmt = conn.prepare(
+
+        let mut stmt = match conn.prepare(
             "SELECT ko.id, ko.object_type, ko.title, ko.summary, ko.content,
                     ko.tags, ko.relationships, ko.provider, ko.instance_url,
                     ko.original_id, ko.web_url, ko.source_metadata,
@@ -229,13 +237,48 @@ impl Storage {
              WHERE knowledge_fts MATCH ?1
              ORDER BY rank
              LIMIT ?2",
-        )?;
+        ) {
+            Ok(s) => s,
+            Err(_) => return self.search_like_fallback(query, limit),
+        };
 
-        let rows = stmt.query_map(params![formatted_query, limit as i64], Self::row_to_object)?;
+        let rows = match stmt.query_map(params![formatted_query, limit as i64], Self::row_to_object) {
+            Ok(r) => r,
+            Err(_) => return self.search_like_fallback(query, limit),
+        };
 
         let mut results = Vec::new();
         for r in rows {
-            results.push(r?);
+            if let Ok(obj) = r {
+                results.push(obj);
+            }
+        }
+        Ok(results)
+    }
+
+    pub fn search_like_fallback(&self, query: &str, limit: usize) -> Result<Vec<KnowledgeObject>> {
+        let conn = self.get_connection()?;
+        let clean = query.trim().replace('"', "");
+        let like_query = format!("%{}%", clean);
+
+        let mut stmt = conn.prepare(
+            "SELECT id, object_type, title, summary, content,
+                    tags, relationships, provider, instance_url,
+                    original_id, web_url, source_metadata,
+                    updated_at, synced_at, checksum
+             FROM knowledge_objects
+             WHERE title LIKE ?1 OR content LIKE ?1 OR original_id LIKE ?1 OR id LIKE ?1
+             ORDER BY updated_at DESC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(params![like_query, limit as i64], Self::row_to_object)?;
+
+        let mut results = Vec::new();
+        for r in rows {
+            if let Ok(obj) = r {
+                results.push(obj);
+            }
         }
         Ok(results)
     }
