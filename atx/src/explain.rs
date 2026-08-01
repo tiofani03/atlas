@@ -340,27 +340,35 @@ pub fn build_explain_output(
         ai_findings.push(AiFindingGroupDTO { group_name, items });
     }
 
-    // Contextual Next Commands
-    let next_commands = match art.kind {
-        ArtifactKind::Release => vec![
-            format!("atx explain {} --subsystem=atlas-core", main_id),
-            "atx explain INIT-488".into(),
-            "atx diff 4.51.0..4.52.0".into(),
-        ],
-        ArtifactKind::Ticket | ArtifactKind::Issue => vec![
-            "atx artifact atlas/atlas-core#1240".into(),
-            "atx explain 4.52.0".into(),
-            "atx impact API-ContextQuery".into(),
-        ],
-        _ => vec![
-            format!("atx artifact {}", main_id),
-            "atx explain 4.52.0".into(),
-            "atx status".into(),
-        ],
-    };
-
     let total_facts = facts.iter().map(|f| f.total_count).sum();
     let total_ai = ai_findings.iter().map(|f| f.items.len()).sum();
+
+    // Contextual Next Commands
+    let next_commands = if total_facts == 0 && total_ai == 0 {
+        vec![
+            format!("atx artifact {}", main_id),
+            "atx sync".into(),
+            "atx reindex".into(),
+        ]
+    } else {
+        match art.kind {
+            ArtifactKind::Release => vec![
+                format!("atx explain {} --subsystem=atlas-core", main_id),
+                "atx explain INIT-488".into(),
+                "atx diff 4.51.0..4.52.0".into(),
+            ],
+            ArtifactKind::Ticket | ArtifactKind::Issue => vec![
+                format!("atx artifact {}", main_id),
+                "atx explain 4.52.0".into(),
+                "atx status".into(),
+            ],
+            _ => vec![
+                format!("atx artifact {}", main_id),
+                "atx explain 4.52.0".into(),
+                "atx status".into(),
+            ],
+        }
+    };
 
     ExplainOutput {
         artifact: header,
@@ -382,80 +390,49 @@ fn build_lineage_path(
     let main_id = primary_id(art);
     let mut path = Vec::new();
 
-    match art.kind {
-        ArtifactKind::Release => {
-            let ticket = related.iter().find(|(_, a)| a.kind == ArtifactKind::Ticket || a.source_id.starts_with("INIT-"));
-            let pr = related.iter().find(|(_, a)| a.kind == ArtifactKind::PullRequest);
+    let parent = related.iter().find(|(r, _)| {
+        r.relationship_type == "parent_epic"
+            || r.relationship_type == "belongs_to"
+            || r.relationship_type == "owns"
+    });
 
-            if let Some((_, t_art)) = ticket {
-                path.push(GraphPathNodeDTO {
-                    id: primary_id(t_art),
-                    kind: "Initiative".into(),
-                    title: t_art.title.clone(),
-                    relation: Some("↓".into()),
-                });
-            } else {
-                path.push(GraphPathNodeDTO {
-                    id: "INIT-488".into(),
-                    kind: "Initiative".into(),
-                    title: "Dynamic Context Caching".into(),
-                    relation: Some("↓".into()),
-                });
-            }
+    let pr = related.iter().find(|(_, a)| a.kind == ArtifactKind::PullRequest);
+    let release = related.iter().find(|(_, a)| a.kind == ArtifactKind::Release);
 
-            if let Some((_, p_art)) = pr {
-                path.push(GraphPathNodeDTO {
-                    id: primary_id(p_art),
-                    kind: "Pull Request".into(),
-                    title: p_art.title.clone(),
-                    relation: Some("↓".into()),
-                });
-            } else {
-                path.push(GraphPathNodeDTO {
-                    id: "PR #1240".into(),
-                    kind: "Pull Request".into(),
-                    title: "feat(storage): vector caching".into(),
-                    relation: Some("↓".into()),
-                });
-            }
+    if let Some((_, p_art)) = parent {
+        path.push(GraphPathNodeDTO {
+            id: primary_id(p_art),
+            kind: format_kind(&p_art.kind),
+            title: p_art.title.clone(),
+            relation: Some("↓".into()),
+        });
+    }
 
-            path.push(GraphPathNodeDTO {
-                id: main_id,
-                kind: "Release".into(),
-                title: art.title.clone(),
-                relation: None,
-            });
-        }
-        ArtifactKind::Ticket | ArtifactKind::Issue => {
-            path.push(GraphPathNodeDTO {
-                id: "EPIC-102".into(),
-                kind: "Epic".into(),
-                title: "Next-Gen Context Storage Architecture".into(),
-                relation: Some("↓".into()),
-            });
+    let has_downstream = pr.is_some() || release.is_some();
+    path.push(GraphPathNodeDTO {
+        id: main_id,
+        kind: format_kind(&art.kind),
+        title: art.title.clone(),
+        relation: if has_downstream { Some("↓".into()) } else { None },
+    });
 
-            path.push(GraphPathNodeDTO {
-                id: main_id,
-                kind: if art.source_id.starts_with("INIT-") { "Initiative".into() } else { "Ticket".into() },
-                title: art.title.clone(),
-                relation: Some("↓".into()),
-            });
+    if let Some((_, pr_art)) = pr {
+        let is_last = release.is_none();
+        path.push(GraphPathNodeDTO {
+            id: primary_id(pr_art),
+            kind: "Pull Request".into(),
+            title: pr_art.title.clone(),
+            relation: if !is_last { Some("↓".into()) } else { None },
+        });
+    }
 
-            path.push(GraphPathNodeDTO {
-                id: "PR #1240 ──> Release 4.52.0".into(),
-                kind: "PR & Target Release".into(),
-                title: "feat(storage): implement dynamic vector caching".into(),
-                relation: None,
-            });
-        }
-        _ => {
-            path.push(GraphPathNodeDTO {
-                id: main_id,
-                kind: format_kind(&art.kind),
-                title: art.title.clone(),
-                relation: None,
-            });
-        }
+    if let Some((_, rel_art)) = release {
+        path.push(GraphPathNodeDTO {
+            id: primary_id(rel_art),
+            kind: "Release".into(),
+            title: rel_art.title.clone(),
+            relation: None,
+        });
     }
 
     path
@@ -500,6 +477,21 @@ pub fn render_explain_terminal(output: &ExplainOutput, opts: &ExplainOptions) ->
         "  {} Facts | {} AI Findings\n\n",
         output.summary.total_facts, output.summary.total_ai
     ));
+
+    if output.summary.total_facts == 0 && output.summary.total_ai == 0 {
+        out.push_str(&format!(
+            "  {}ℹ️  No relationships found for this artifact in the graph.{}\n",
+            c_yellow, c_reset
+        ));
+        out.push_str(&format!(
+            "  {}• Run `atx sync` to ingest latest changes from GitHub/Jira/Confluence.{}\n",
+            c_dim, c_reset
+        ));
+        out.push_str(&format!(
+            "  {}• Run `atx reindex` if commit/PR linkages were recently updated.{}\n\n",
+            c_dim, c_reset
+        ));
+    }
 
     // SECTION 4: FACTS
     if !opts.ai_only && !output.facts.is_empty() {
