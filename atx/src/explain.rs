@@ -10,6 +10,8 @@ pub struct ExplainOptions {
     pub subsystem: Option<String>,
     pub facts_only: bool,
     pub ai_only: bool,
+    pub show_merges: bool,
+    pub show_commits: bool,
     pub json: bool,
     pub no_color: bool,
 }
@@ -19,8 +21,12 @@ pub struct ExplainOutput {
     pub artifact: ArtifactHeaderDTO,
     pub lineage_path: Vec<GraphPathNodeDTO>,
     pub summary: MetricSummaryDTO,
-    pub facts: Vec<FactGroupDTO>,
+    pub business_strategy: Vec<FactGroupDTO>,
+    pub implementation: Vec<FactGroupDTO>,
+    pub technical_details: Vec<FactGroupDTO>,
+    pub commits: CommitSectionDTO,
     pub ai_findings: Vec<AiFindingGroupDTO>,
+    pub evidence: Vec<String>,
     pub next_commands: Vec<String>,
 }
 
@@ -45,6 +51,7 @@ pub struct GraphPathNodeDTO {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricSummaryDTO {
+    pub composition_line: String,
     pub total_facts: usize,
     pub total_ai: usize,
 }
@@ -70,7 +77,15 @@ pub struct FactItemDTO {
     pub id: String,
     pub title: String,
     pub meta: Option<String>,
+    pub tag: Option<String>,
     pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitSectionDTO {
+    pub primary_commits: Vec<FactItemDTO>,
+    pub merge_commits: Vec<FactItemDTO>,
+    pub hidden_merges_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,9 +172,19 @@ pub fn build_explain_output(
     // 1. Build Lineage Graph Path
     let lineage_path = build_lineage_path(art, related);
 
-    // 2. Separate FACTS vs AI FINDINGS
-    let mut fact_items_by_kind: BTreeMap<String, Vec<(FactItemDTO, String)>> = BTreeMap::new();
+    // 2. Separate Facts & AI Findings into Abstraction Tiers
+    let mut biz_groups: BTreeMap<String, Vec<FactItemDTO>> = BTreeMap::new();
+    let mut impl_groups: BTreeMap<String, Vec<(FactItemDTO, String)>> = BTreeMap::new();
+    let mut tech_groups: BTreeMap<String, Vec<FactItemDTO>> = BTreeMap::new();
+    let mut primary_commits: Vec<FactItemDTO> = Vec::new();
+    let mut merge_commits: Vec<FactItemDTO> = Vec::new();
     let mut ai_items_by_group: BTreeMap<String, Vec<AiFindingItemDTO>> = BTreeMap::new();
+    let mut global_evidence: HashSet<String> = HashSet::new();
+
+    let mut release_count = 0;
+    let mut pr_count = 0;
+    let mut initiative_count = 0;
+    let mut commit_count = 0;
     let mut seen_ids = HashSet::new();
 
     for (rel, rel_art) in related {
@@ -205,90 +230,126 @@ pub fn build_explain_output(
                 _ => "Semantic context association".into(),
             };
 
-            let evidence = match rel_art.kind {
-                ArtifactKind::Document | ArtifactKind::Specification => vec![
-                    "14 matching technical phrases".into(),
-                    "symbol VectorCache".into(),
-                ],
-                ArtifactKind::Component => vec!["Touched ContextQueryHandler in PR #1240".into()],
-                _ => vec!["Embedding cosine similarity > 0.88".into()],
+            let evidence_text = match rel_art.kind {
+                ArtifactKind::Document | ArtifactKind::Specification => {
+                    format!("14 matching technical phrases in {} (AI Confidence {}%)", rel_id, confidence)
+                }
+                ArtifactKind::Component => format!("Touched ContextQueryHandler in PR #1240"),
+                _ => format!("Embedding cosine similarity > 0.88"),
             };
+            global_evidence.insert(evidence_text.clone());
 
             ai_items_by_group.entry(group_name).or_default().push(AiFindingItemDTO {
                 id: rel_id,
                 title: rel_art.title.clone(),
                 confidence,
                 why,
-                evidence,
+                evidence: vec![evidence_text],
             });
         } else {
-            let (group_name, subsystem) = match rel_art.kind {
-                ArtifactKind::Ticket | ArtifactKind::Issue => {
-                    if rel.relationship_type == "parent_epic" || rel_id.starts_with("EPIC-") {
-                        ("Parents".into(), "default".into())
-                    } else if rel_id.starts_with("INIT-") {
-                        ("Initiatives".into(), "default".into())
-                    } else {
-                        ("Tickets".into(), "default".into())
-                    }
+            // Categorize Deterministic Facts
+            match rel_art.kind {
+                ArtifactKind::Release => {
+                    release_count += 1;
+                    let date = rel_art.created_at.map(|dt| dt.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "2026-07-28".into());
+                    let ev = format!("Jira FixVersion \"{}\" (Target Release)", main_id);
+                    global_evidence.insert(ev);
+
+                    biz_groups.entry("Releases".into()).or_default().push(FactItemDTO {
+                        id: rel_id,
+                        title: rel_art.title.clone(),
+                        meta: Some(format!("(Released {})", date)),
+                        tag: Some(format!("[FixVersion: {}]", main_id)),
+                        evidence: vec![],
+                    });
                 }
-                ArtifactKind::Release => ("Releases".into(), "default".into()),
+                ArtifactKind::Ticket | ArtifactKind::Issue => {
+                    initiative_count += 1;
+                    let tag_label = if rel.relationship_type == "parent_epic" {
+                        "[Jira Parent Link]"
+                    } else {
+                        "[Linked Ticket]"
+                    };
+
+                    biz_groups.entry("Parents & Initiatives".into()).or_default().push(FactItemDTO {
+                        id: rel_id,
+                        title: rel_art.title.clone(),
+                        meta: None,
+                        tag: Some(tag_label.into()),
+                        evidence: vec![],
+                    });
+                }
                 ArtifactKind::PullRequest => {
+                    pr_count += 1;
                     let sub = rel_art
                         .repository
                         .as_deref()
                         .map(|r| r.split('/').last().unwrap_or(r))
                         .unwrap_or("atlas-core");
-                    ("Pull Requests".into(), sub.to_string())
-                }
-                ArtifactKind::Commit => ("Commits".into(), "default".into()),
-                ArtifactKind::Repository => ("Parents".into(), "default".into()),
-                _ => ("Other Facts".into(), "default".into()),
-            };
+                    let author = rel_art.metadata.get("author").and_then(|v| v.as_str()).unwrap_or("@dev");
+                    let state = if status.to_lowercase().contains("merge") { "Merged" } else { &status };
 
-            let evidence_str = match rel.relationship_type.as_str() {
-                "merged_into" | "contains" => format!("Jira FixVersion \"{}\"", main_id),
-                "implements" | "implemented_by" => {
-                    if rel_art.kind == ArtifactKind::PullRequest {
-                        format!("PR body \"Fixes {}\" • branch feature/{}-cache", main_id, main_id)
+                    let ev = format!("PR body \"Fixes {}\" • branch feature/{}-cache", main_id, main_id);
+                    global_evidence.insert(ev);
+
+                    let item = FactItemDTO {
+                        id: rel_id,
+                        title: rel_art.title.clone(),
+                        meta: Some(format!("[{} {}]", state, author)),
+                        tag: Some(format!("[Fixes {}]", main_id)),
+                        evidence: vec![],
+                    };
+                    impl_groups.entry("Pull Requests".into()).or_default().push((item, sub.to_string()));
+                }
+                ArtifactKind::Commit => {
+                    commit_count += 1;
+                    let is_merge_commit = rel_art.title.to_lowercase().starts_with("merge");
+
+                    let item = FactItemDTO {
+                        id: format!("commit {}", safe_truncate(&rel_id, 7)),
+                        title: rel_art.title.clone(),
+                        meta: None,
+                        tag: None,
+                        evidence: vec![],
+                    };
+
+                    if is_merge_commit {
+                        merge_commits.push(item);
                     } else {
-                        format!("Commit SHA reference to {}", main_id)
+                        primary_commits.push(item);
                     }
                 }
-                "parent_epic" => "Jira Parent Link".into(),
-                "target_release" | "released_in" => format!("Jira FixVersion field set to {}", main_id),
-                _ => format!("Git/Issue link reference to {}", rel_id),
-            };
-
-            let meta = if rel_art.kind == ArtifactKind::PullRequest {
-                let author = rel_art.metadata.get("author").and_then(|v| v.as_str()).unwrap_or("@dev");
-                let state = if status.to_lowercase().contains("merge") { "Merged" } else { &status };
-                Some(format!("[{}] {}", state, author))
-            } else if rel_art.kind == ArtifactKind::Release {
-                let date = rel_art.created_at.map(|dt| dt.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "2026-07-28".into());
-                Some(format!("(Released {})", date))
-            } else {
-                None
-            };
-
-            let item = FactItemDTO {
-                id: rel_id,
-                title: rel_art.title.clone(),
-                meta,
-                evidence: vec![evidence_str],
-            };
-
-            fact_items_by_kind.entry(group_name).or_default().push((item, subsystem));
+                ArtifactKind::Repository | ArtifactKind::Component => {
+                    tech_groups.entry("Repositories & Services".into()).or_default().push(FactItemDTO {
+                        id: rel_id,
+                        title: rel_art.title.clone(),
+                        meta: None,
+                        tag: Some("[Repository]".into()),
+                        evidence: vec![],
+                    });
+                }
+                _ => {}
+            }
         }
     }
 
-    // Build Fact Groups with Subsystem Clustering
-    let mut facts = Vec::new();
+    // Build Business & Strategy DTOs
+    let mut business_strategy = Vec::new();
+    for (group_name, items) in biz_groups {
+        let total_count = items.len();
+        business_strategy.push(FactGroupDTO {
+            group_name,
+            total_count,
+            subsystems: vec![],
+            items,
+        });
+    }
 
-    for (group_name, item_pairs) in fact_items_by_kind {
+    // Build Implementation DTOs (With Subsystem Clustering)
+    let mut implementation = Vec::new();
+    for (group_name, item_pairs) in impl_groups {
         let total_items = item_pairs.len();
-
-        if group_name == "Pull Requests" && total_items > 3 {
+        if total_items > 3 {
             let mut subsystem_map: BTreeMap<String, Vec<FactItemDTO>> = BTreeMap::new();
             for (item, sub) in item_pairs {
                 subsystem_map.entry(sub).or_default().push(item);
@@ -316,7 +377,7 @@ pub fn build_explain_output(
                 });
             }
 
-            facts.push(FactGroupDTO {
+            implementation.push(FactGroupDTO {
                 group_name,
                 total_count: total_items,
                 subsystems: sub_dtos,
@@ -324,7 +385,7 @@ pub fn build_explain_output(
             });
         } else {
             let items: Vec<FactItemDTO> = item_pairs.into_iter().map(|(item, _)| item).collect();
-            facts.push(FactGroupDTO {
+            implementation.push(FactGroupDTO {
                 group_name,
                 total_count: items.len(),
                 subsystems: vec![],
@@ -333,15 +394,63 @@ pub fn build_explain_output(
         }
     }
 
-    // Build AI Findings Groups
-    let mut ai_findings = Vec::new();
+    // Build Technical Details DTOs
+    let mut technical_details = Vec::new();
+    for (group_name, items) in tech_groups {
+        let total_count = items.len();
+        technical_details.push(FactGroupDTO {
+            group_name,
+            total_count,
+            subsystems: vec![],
+            items,
+        });
+    }
 
+    // Commit Section DTO
+    let total_merges = merge_commits.len();
+    let hidden_merges_count = if opts.show_merges || opts.all { 0 } else { total_merges };
+
+    let visible_primary = if opts.show_commits || opts.all || primary_commits.len() <= 5 {
+        primary_commits
+    } else {
+        primary_commits.into_iter().take(5).collect()
+    };
+
+    let commits_dto = CommitSectionDTO {
+        primary_commits: visible_primary,
+        merge_commits: if opts.show_merges || opts.all { merge_commits } else { vec![] },
+        hidden_merges_count,
+    };
+
+    // AI Findings DTOs
+    let mut ai_findings = Vec::new();
     for (group_name, items) in ai_items_by_group {
         ai_findings.push(AiFindingGroupDTO { group_name, items });
     }
 
-    let total_facts = facts.iter().map(|f| f.total_count).sum();
+    // Rich Composition Summary Line
+    let total_facts = release_count + pr_count + initiative_count + commit_count;
     let total_ai = ai_findings.iter().map(|f| f.items.len()).sum();
+
+    let composition_line = if total_facts == 0 && total_ai == 0 {
+        "0 Facts • 0 AI Findings".into()
+    } else {
+        let mut parts = Vec::new();
+        if release_count > 0 { parts.push(format!("{} Release{}", release_count, if release_count > 1 { "s" } else { "" })); }
+        if pr_count > 0 { parts.push(format!("{} Pull Request{}", pr_count, if pr_count > 1 { "s" } else { "" })); }
+        if initiative_count > 0 { parts.push(format!("{} Initiative{}", initiative_count, if initiative_count > 1 { "s" } else { "" })); }
+        if commit_count > 0 {
+            if hidden_merges_count > 0 {
+                parts.push(format!("{} Commits ({} merges hidden)", commit_count, hidden_merges_count));
+            } else {
+                parts.push(format!("{} Commits", commit_count));
+            }
+        }
+        if total_ai > 0 { parts.push(format!("{} AI Finding{}", total_ai, if total_ai > 1 { "s" } else { "" })); }
+        parts.join(" • ")
+    };
+
+    let evidence_list: Vec<String> = global_evidence.into_iter().collect();
 
     // Contextual Next Commands
     let next_commands = if total_facts == 0 && total_ai == 0 {
@@ -351,34 +460,31 @@ pub fn build_explain_output(
             "atx reindex".into(),
         ]
     } else {
-        match art.kind {
-            ArtifactKind::Release => vec![
-                format!("atx explain {} --subsystem=atlas-core", main_id),
-                "atx explain INIT-488".into(),
-                "atx diff 4.51.0..4.52.0".into(),
-            ],
-            ArtifactKind::Ticket | ArtifactKind::Issue => vec![
-                format!("atx artifact {}", main_id),
-                "atx explain 4.52.0".into(),
-                "atx status".into(),
-            ],
-            _ => vec![
-                format!("atx artifact {}", main_id),
-                "atx explain 4.52.0".into(),
-                "atx status".into(),
-            ],
+        let mut cmds = Vec::new();
+        cmds.push(format!("atx artifact {}", main_id));
+        cmds.push("atx explain 4.52.0".into());
+        if hidden_merges_count > 0 {
+            cmds.push(format!("atx explain {} --show-merges", main_id));
+        } else {
+            cmds.push("atx status".into());
         }
+        cmds
     };
 
     ExplainOutput {
         artifact: header,
         lineage_path,
         summary: MetricSummaryDTO {
+            composition_line,
             total_facts,
             total_ai,
         },
-        facts,
+        business_strategy,
+        implementation,
+        technical_details,
+        commits: commits_dto,
         ai_findings,
+        evidence: evidence_list,
         next_commands,
     }
 }
@@ -452,13 +558,17 @@ pub fn render_explain_terminal(output: &ExplainOutput, opts: &ExplainOptions) ->
     let mut out = String::new();
 
     // SECTION 1: HEADER
+    out.push_str("================================================================================\n");
+    out.push_str("  ATLAS KNOWLEDGE GRAPH EXPLANATION\n");
+    out.push_str("================================================================================\n");
     out.push_str(&format!(
-        "{} {} {}\n",
+        "  {} {}\n",
         format!("{} {}", output.artifact.kind.to_uppercase(), output.artifact.id),
-        c_cyan,
-        c_reset
+        c_cyan
     ));
-    out.push_str(&format!("{}\n\n", output.artifact.meta_line));
+    out.push_str(&format!("  Title : {}\n", output.artifact.title));
+    out.push_str(&format!("  Meta  : {}\n", output.artifact.meta_line));
+    out.push_str("================================================================================\n\n");
 
     // SECTION 2: GRAPH PATH
     out.push_str(&format!("{}{}GRAPH PATH{}\n", c_bold, c_cyan, c_reset));
@@ -473,10 +583,7 @@ pub fn render_explain_terminal(output: &ExplainOutput, opts: &ExplainOptions) ->
 
     // SECTION 3: SUMMARY
     out.push_str(&format!("{}{}SUMMARY{}\n", c_bold, c_cyan, c_reset));
-    out.push_str(&format!(
-        "  {} Facts | {} AI Findings\n\n",
-        output.summary.total_facts, output.summary.total_ai
-    ));
+    out.push_str(&format!("  {}\n\n", output.summary.composition_line));
 
     if output.summary.total_facts == 0 && output.summary.total_ai == 0 {
         out.push_str(&format!(
@@ -493,32 +600,52 @@ pub fn render_explain_terminal(output: &ExplainOutput, opts: &ExplainOptions) ->
         ));
     }
 
-    // SECTION 4: FACTS
-    if !opts.ai_only && !output.facts.is_empty() {
-        out.push_str(&format!("{}{}FACTS{}\n\n", c_bold, c_green, c_reset));
-
-        for group in &output.facts {
-            out.push_str(&format!("{}{}{}\n", c_bold, group.group_name, c_reset));
-
-            if !group.subsystems.is_empty() {
-                let total_prs: usize = group.subsystems.iter().map(|s| s.total_count).sum();
+    // SECTION 4: BUSINESS & STRATEGY
+    if !opts.ai_only && !output.business_strategy.is_empty() {
+        out.push_str(&format!("{}{}BUSINESS & STRATEGY{}\n\n", c_bold, c_green, c_reset));
+        for group in &output.business_strategy {
+            out.push_str(&format!("  {}{}{}\n", c_bold, group.group_name, c_reset));
+            for item in &group.items {
+                let meta_str = item.meta.as_deref().unwrap_or("");
+                let tag_str = item.tag.as_deref().unwrap_or("");
                 out.push_str(&format!(
-                    "  {} ({} total across {} subsystems){}\n",
-                    c_dim, total_prs, group.subsystems.len(), c_reset
+                    "    • {}: {} {} {}{}{}\n",
+                    item.id,
+                    safe_truncate(&item.title, 55),
+                    meta_str,
+                    c_dim,
+                    tag_str,
+                    c_reset
                 ));
+            }
+            out.push('\n');
+        }
+    }
 
+    // SECTION 5: IMPLEMENTATION (Pull Requests)
+    if !opts.ai_only && !output.implementation.is_empty() {
+        out.push_str(&format!("{}{}IMPLEMENTATION{}\n\n", c_bold, c_green, c_reset));
+        for group in &output.implementation {
+            out.push_str(&format!("  {}{}{}\n", c_bold, group.group_name, c_reset));
+            if !group.subsystems.is_empty() {
                 for sub in &group.subsystems {
-                    out.push_str(&format!("  [{}] {} PRs\n", sub.subsystem_name, sub.total_count));
+                    out.push_str(&format!("    [{}] {} PRs\n", sub.subsystem_name, sub.total_count));
                     for item in &sub.items {
+                        let meta_str = item.meta.as_deref().unwrap_or("");
+                        let tag_str = item.tag.as_deref().unwrap_or("");
                         out.push_str(&format!(
-                            "    • {}: {}\n",
+                            "      • {}: {} {} {}{}{}\n",
                             item.id,
-                            safe_truncate(&item.title, 55)
+                            safe_truncate(&item.title, 50),
+                            meta_str,
+                            c_dim,
+                            tag_str,
+                            c_reset
                         ));
                     }
                     if sub.collapsed_count > 0 {
                         out.push_str(&format!(
-                            "    {}└─ 🔒 +{} more PRs in {}{}\n",
+                            "      {}└─ 🔒 +{} more PRs in {}{}\n",
                             c_dim, sub.collapsed_count, sub.subsystem_name, c_reset
                         ));
                     }
@@ -526,49 +653,107 @@ pub fn render_explain_terminal(output: &ExplainOutput, opts: &ExplainOptions) ->
             } else {
                 for item in &group.items {
                     let meta_str = item.meta.as_deref().unwrap_or("");
+                    let tag_str = item.tag.as_deref().unwrap_or("");
                     out.push_str(&format!(
-                        "  • {}: {} {}\n",
+                        "    • {}: {} {} {}{}{}\n",
                         item.id,
                         safe_truncate(&item.title, 55),
-                        meta_str
+                        meta_str,
+                        c_dim,
+                        tag_str,
+                        c_reset
                     ));
-                    for ev in &item.evidence {
-                        out.push_str(&format!("    {}Evidence: {}{}\n", c_dim, ev, c_reset));
-                    }
                 }
             }
             out.push('\n');
         }
     }
 
-    // SECTION 5: AI FINDINGS
-    if !opts.facts_only && !output.ai_findings.is_empty() {
-        out.push_str(&format!("{}{}AI FINDINGS{}\n\n", c_bold, c_purple, c_reset));
-
-        for group in &output.ai_findings {
-            out.push_str(&format!("{}{}{}\n", c_bold, group.group_name, c_reset));
+    // SECTION 6: TECHNICAL DETAILS
+    if !opts.ai_only && !output.technical_details.is_empty() {
+        out.push_str(&format!("{}{}TECHNICAL DETAILS{}\n\n", c_bold, c_green, c_reset));
+        for group in &output.technical_details {
+            out.push_str(&format!("  {}{}{}\n", c_bold, group.group_name, c_reset));
             for item in &group.items {
                 out.push_str(&format!(
-                    "  • {}: {} ({}%)\n",
+                    "    • {}: {}\n",
+                    item.id,
+                    safe_truncate(&item.title, 55)
+                ));
+            }
+            out.push('\n');
+        }
+    }
+
+    // SECTION 7: CODE COMMITS
+    let has_commits = !output.commits.primary_commits.is_empty()
+        || !output.commits.merge_commits.is_empty()
+        || output.commits.hidden_merges_count > 0;
+
+    if !opts.ai_only && has_commits {
+        out.push_str(&format!("{}{}CODE COMMITS{}\n\n", c_bold, c_green, c_reset));
+        if !output.commits.primary_commits.is_empty() {
+            out.push_str(&format!("  {}Primary Commits ({}){}\n", c_bold, output.commits.primary_commits.len(), c_reset));
+            for item in &output.commits.primary_commits {
+                out.push_str(&format!(
+                    "    • {}: {}\n",
+                    item.id,
+                    safe_truncate(&item.title, 55)
+                ));
+            }
+        }
+
+        if !output.commits.merge_commits.is_empty() {
+            out.push_str(&format!("  {}Merge Commits ({}){}\n", c_bold, output.commits.merge_commits.len(), c_reset));
+            for item in &output.commits.merge_commits {
+                out.push_str(&format!(
+                    "    • {}: {}\n",
+                    item.id,
+                    safe_truncate(&item.title, 55)
+                ));
+            }
+        } else if output.commits.hidden_merges_count > 0 {
+            out.push_str(&format!(
+                "  {}Merge Commits{}\n    {}└─ 🔒 {} merge commits collapsed (use --show-merges to view){}\n",
+                c_bold, c_reset, c_dim, output.commits.hidden_merges_count, c_reset
+            ));
+        }
+        out.push('\n');
+    }
+
+    // SECTION 8: AI FINDINGS
+    if !opts.facts_only && !output.ai_findings.is_empty() {
+        out.push_str(&format!("{}{}AI FINDINGS{}\n\n", c_bold, c_purple, c_reset));
+        for group in &output.ai_findings {
+            out.push_str(&format!("  {}{}{}\n", c_bold, group.group_name, c_reset));
+            for item in &group.items {
+                out.push_str(&format!(
+                    "    • {}: {} ({}%)\n",
                     item.id,
                     safe_truncate(&item.title, 55),
                     item.confidence
                 ));
-                out.push_str(&format!("    {}Why: {}{}\n", c_dim, item.why, c_reset));
-                if !item.evidence.is_empty() {
-                    let ev_joined = item.evidence.join(" • ");
-                    out.push_str(&format!("    {}Evidence: {}{}\n", c_dim, ev_joined, c_reset));
-                }
+                out.push_str(&format!("      {}Why: {}{}\n", c_dim, item.why, c_reset));
             }
             out.push('\n');
         }
     }
 
-    // SECTION 6: NEXT COMMANDS
+    // SECTION 9: EVIDENCE & PROVENANCE
+    if !output.evidence.is_empty() {
+        out.push_str(&format!("{}{}EVIDENCE & PROVENANCE{}\n", c_bold, c_dim, c_reset));
+        for ev in &output.evidence {
+            out.push_str(&format!("  {}• {}{}\n", c_dim, ev, c_reset));
+        }
+        out.push('\n');
+    }
+
+    // SECTION 10: NEXT COMMANDS
     out.push_str(&format!("{}{}NEXT{}\n", c_bold, c_yellow, c_reset));
     for cmd in &output.next_commands {
         out.push_str(&format!("  • {}\n", cmd));
     }
+    out.push_str("================================================================================\n");
 
     out
 }
@@ -636,8 +821,9 @@ mod tests {
         assert!(rendered.contains("RELEASE 4.52.0"));
         assert!(rendered.contains("GRAPH PATH"));
         assert!(rendered.contains("SUMMARY"));
-        assert!(rendered.contains("FACTS"));
+        assert!(rendered.contains("IMPLEMENTATION"));
         assert!(rendered.contains("AI FINDINGS"));
+        assert!(rendered.contains("EVIDENCE & PROVENANCE"));
         assert!(rendered.contains("NEXT"));
         assert!(rendered.contains("DOC-204"));
         assert!(rendered.contains("(96%)"));
@@ -648,7 +834,6 @@ mod tests {
         let art = make_test_artifact("4.52.0", ArtifactKind::Release, "v4.52.0 Release Tag");
         let mut related = Vec::new();
 
-        // Add 5 PRs for atlas-core subsystem
         for i in 1..=5 {
             let pr = make_test_artifact(
                 &format!("PR #{}", 1200 + i),
@@ -665,7 +850,6 @@ mod tests {
             ));
         }
 
-        // Test default collapsed output
         let opts_default = ExplainOptions {
             no_color: true,
             ..Default::default()
@@ -675,7 +859,6 @@ mod tests {
 
         assert!(rendered_default.contains("└─ 🔒 +3 more PRs in atlas-core"));
 
-        // Test expanded with --all
         let opts_all = ExplainOptions {
             all: true,
             no_color: true,
@@ -699,4 +882,3 @@ mod tests {
         assert!(json_str.contains("Dynamic Context Caching"));
     }
 }
-

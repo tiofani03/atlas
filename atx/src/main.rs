@@ -213,6 +213,12 @@ enum Commands {
         /// Display only AI-inferred findings
         #[arg(long)]
         ai_only: bool,
+        /// Show all merge commits inline
+        #[arg(long)]
+        show_merges: bool,
+        /// Show all commits without line collapsing
+        #[arg(long)]
+        show_commits: bool,
         /// Output presentation DTO as JSON
         #[arg(long)]
         json: bool,
@@ -770,6 +776,8 @@ async fn main() -> Result<()> {
             subsystem,
             facts_only,
             ai_only,
+            show_merges,
+            show_commits,
             json,
             no_color,
         } => {
@@ -782,6 +790,8 @@ async fn main() -> Result<()> {
                 subsystem,
                 facts_only,
                 ai_only,
+                show_merges,
+                show_commits,
                 json,
                 no_color,
             };
