@@ -163,6 +163,7 @@ dependencies = [
  "atlas-core",
  "chrono",
  "clap",
+ "serde",
  "serde_json",
  "tokio",
 ]

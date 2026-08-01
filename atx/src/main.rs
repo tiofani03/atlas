@@ -1,4 +1,5 @@
 mod formatter;
+mod explain;
 
 use anyhow::Result;
 use atlas_core::{
@@ -193,10 +194,31 @@ enum Commands {
         target: String,
     },
 
-    /// Diagnostic command explaining why any relationship exists (source parser + rule + artifact IDs)
+    /// Explain relationship graph context for an artifact
     Explain {
         /// Artifact ID or source_id
         id: String,
+        /// Show all relationships without collapsing
+        #[arg(short = 'a', long)]
+        all: bool,
+        /// Expand specific section (e.g. prs, tickets, docs, parents, releases)
+        #[arg(short = 'e', long)]
+        expand: Option<String>,
+        /// Expand PRs for a specific subsystem (e.g. atlas-core)
+        #[arg(long)]
+        subsystem: Option<String>,
+        /// Display only deterministic facts
+        #[arg(long)]
+        facts_only: bool,
+        /// Display only AI-inferred findings
+        #[arg(long)]
+        ai_only: bool,
+        /// Output presentation DTO as JSON
+        #[arg(long)]
+        json: bool,
+        /// Disable ANSI color output
+        #[arg(long)]
+        no_color: bool,
     },
 }
 
@@ -741,54 +763,30 @@ async fn main() -> Result<()> {
             );
         }
 
-        Commands::Explain { id } => {
+        Commands::Explain {
+            id,
+            all,
+            expand,
+            subsystem,
+            facts_only,
+            ai_only,
+            json,
+            no_color,
+        } => {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
-            let matches = storage.resolve_artifact_by_alias(&id)?;
-            if matches.is_empty() {
-                println!("Artifact '{}' not found.", id);
-                return Ok(());
-            }
+            let opts = explain::ExplainOptions {
+                all,
+                expand,
+                subsystem,
+                facts_only,
+                ai_only,
+                json,
+                no_color,
+            };
 
-            let art = &matches[0];
-            println!("Explanation for {}", art.source_id);
-            println!("Kind: {}", art.kind);
-            println!("Title: {}\n", art.title);
-
-            let related = storage.get_related_artifacts(&art.source_id)?;
-            if related.is_empty() {
-                println!("No relationships found for artifact.");
-                return Ok(());
-            }
-
-            println!("Relationships & Link Rules:\n");
-            for (idx, (rel, target_art)) in related.iter().enumerate() {
-                let rule_desc = match rel.relationship_type.as_str() {
-                    "merged_into" | "contains" => {
-                        "Deterministic PR/Release Rule: PR, commit, or artifact included in PR or release"
-                    }
-                    "implements" | "implemented_by" => {
-                        "Deterministic Ticket Rule: parsed ticket key (e.g. INIT-488) from commit/PR text"
-                    }
-                    "parent_commit" => "Git Parent Rule: parent commit pointer from Git history",
-                    "child_commit" => "Git Child Rule: child commit pointing to this commit as parent",
-                    "belongs_to" | "owns" => "Hierarchy Rule: container/repository ownership",
-                    "references" | "referenced_by" => "Reference Rule: text cross-reference",
-                    "released_in" | "contains_release" => "Release Ancestry Rule: release tag / version target",
-                    _ => "General Relationship Rule",
-                };
-
-                println!(
-                    "{}. [{}] -> {}\n   Rule: {}\n   Target: [{}] {}\n",
-                    idx + 1,
-                    rel.relationship_type,
-                    rel.target_id,
-                    rule_desc,
-                    target_art.kind.to_string().to_uppercase(),
-                    target_art.title
-                );
-            }
+            explain::handle_explain_command(&storage, &id, &opts)?;
         }
     }
 
