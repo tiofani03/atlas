@@ -559,7 +559,7 @@ impl Storage {
                     repository, tags, relationships, created_at, updated_at, synced_at,
                     checksum, metadata
              FROM knowledge_artifacts
-             WHERE id = ?1 OR source_id = ?1",
+             WHERE id = ?1 OR source_id = ?1 OR LOWER(source_id) = LOWER(?1)",
         )?;
         let obj = stmt.query_row(params![id_or_source_id], Self::row_to_artifact).optional()?;
         Ok(obj)
@@ -769,7 +769,7 @@ impl Storage {
                         repository, tags, relationships, created_at, updated_at, synced_at,
                         checksum, metadata
                  FROM knowledge_artifacts
-                 WHERE source_id = ?1 OR title = ?1",
+                 WHERE source_id = ?1 OR LOWER(source_id) = LOWER(?1) OR title = ?1",
             )?;
             let rows = stmt.query_map(params![clean], Self::row_to_artifact)?;
             for r in rows {
