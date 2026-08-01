@@ -132,5 +132,104 @@ impl KnowledgeArtifact {
         }
         format!("{:x}", hasher.finalize())
     }
+
+    /// Extract structured PullRequestMetadata if this artifact is a Pull Request
+    pub fn pull_request_metadata(&self) -> Option<PullRequestMetadata> {
+        if self.kind != ArtifactKind::PullRequest {
+            return None;
+        }
+
+        let repo = self.repository.clone().or_else(|| {
+            self.metadata
+                .get("repository")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })?;
+
+        let number = self
+            .metadata
+            .get("number")
+            .or_else(|| self.metadata.get("pr_number"))
+            .and_then(|v| v.as_u64())
+            .or_else(|| {
+                // Fallback to parsing integer from source_id ending (e.g. repo#23)
+                if let Some(pos) = self.source_id.rfind('#') {
+                    self.source_id[pos + 1..].parse::<u64>().ok()
+                } else {
+                    None
+                }
+            })?;
+
+        let title = self
+            .metadata
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&self.title)
+            .to_string();
+
+        let state = self
+            .metadata
+            .get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("open")
+            .to_string();
+
+        let branch = self
+            .metadata
+            .get("branch")
+            .or_else(|| self.metadata.get("head_branch"))
+            .or_else(|| {
+                self.metadata
+                    .get("head")
+                    .and_then(|h| h.get("ref").or_else(|| h.get("label")))
+            })
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let merged_at = self
+            .metadata
+            .get("merged_at")
+            .and_then(|v| v.as_str())
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc)));
+
+        let author = self
+            .metadata
+            .get("author")
+            .and_then(|v| v.as_str().map(|s| s.to_string()).or_else(|| {
+                v.get("login").and_then(|l| l.as_str()).map(|s| s.to_string())
+            }))
+            .or_else(|| {
+                self.metadata
+                    .get("user")
+                    .and_then(|u| u.get("login"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
+
+        Some(PullRequestMetadata {
+            repository: repo,
+            number,
+            title,
+            state,
+            branch,
+            merged_at,
+            author,
+            provider: self.provider.clone(),
+        })
+    }
 }
+
+/// Structured metadata for a Pull Request artifact
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PullRequestMetadata {
+    pub repository: String,
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub branch: Option<String>,
+    pub merged_at: Option<DateTime<Utc>>,
+    pub author: Option<String>,
+    pub provider: String,
+}
+
 

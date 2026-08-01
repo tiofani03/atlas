@@ -12,6 +12,9 @@ pub struct ConnectorItemResponse {
     pub projects: Vec<String>,
     pub spaces: Vec<String>,
     pub repos: Vec<String>,
+    pub path: Option<String>,
+    pub paths: Vec<String>,
+    pub glob_patterns: Vec<String>,
     pub last_synced_at: Option<String>,
 }
 
@@ -42,6 +45,21 @@ pub struct GithubConfigPayload {
     pub api_token: Option<String>,
     pub api_token_env: Option<String>,
     pub repos: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct MarkdownConfigPayload {
+    pub id: String,
+    pub path: Option<String>,
+    pub paths: Option<Vec<String>>,
+    pub glob_patterns: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct LocalGitConfigPayload {
+    pub id: String,
+    pub path: Option<String>,
+    pub paths: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +102,9 @@ pub async fn list_connectors(State(state): State<AppState>) -> impl IntoResponse
             projects: conn_cfg.projects.clone(),
             spaces: conn_cfg.spaces.clone(),
             repos: conn_cfg.repos.clone(),
+            path: conn_cfg.path.clone(),
+            paths: conn_cfg.get_paths(),
+            glob_patterns: conn_cfg.glob_patterns.clone(),
             last_synced_at: last_sync.map(|d| d.to_rfc3339()),
         });
     }
@@ -140,6 +161,9 @@ pub async fn save_jira_connector(
             projects: payload.projects.unwrap_or_default(),
             spaces: Vec::new(),
             repos: Vec::new(),
+            path: None,
+            paths: Vec::new(),
+            glob_patterns: Vec::new(),
         },
     );
 
@@ -205,6 +229,9 @@ pub async fn save_confluence_connector(
             projects: Vec::new(),
             spaces: payload.spaces.unwrap_or_default(),
             repos: Vec::new(),
+            path: None,
+            paths: Vec::new(),
+            glob_patterns: Vec::new(),
         },
     );
 
@@ -265,6 +292,9 @@ pub async fn save_github_connector(
             projects: Vec::new(),
             spaces: Vec::new(),
             repos: payload.repos.unwrap_or_default(),
+            path: None,
+            paths: Vec::new(),
+            glob_patterns: Vec::new(),
         },
     );
 
@@ -293,6 +323,9 @@ pub async fn validate_credentials(
         projects: Vec::new(),
         spaces: Vec::new(),
         repos: Vec::new(),
+        path: None,
+        paths: Vec::new(),
+        glob_patterns: Vec::new(),
     };
 
     let result = match payload.provider.as_str() {
@@ -311,5 +344,152 @@ pub async fn validate_credentials(
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "valid": false, "message": err.to_string() })),
         ),
+    }
+}
+
+pub async fn save_markdown_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<MarkdownConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            )
+        }
+    };
+
+    let paths_vec = payload.paths.unwrap_or_default();
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "markdown".to_string(),
+            instance_url: String::new(),
+            email: String::new(),
+            api_token: None,
+            api_token_env: None,
+            projects: Vec::new(),
+            spaces: Vec::new(),
+            repos: Vec::new(),
+            path: payload.path,
+            paths: paths_vec,
+            glob_patterns: payload.glob_patterns.unwrap_or_default(),
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "success": true, "id": payload.id })),
+    )
+}
+
+pub async fn save_local_git_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<LocalGitConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            )
+        }
+    };
+
+    let paths_vec = payload.paths.unwrap_or_default();
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "local_git".to_string(),
+            instance_url: String::new(),
+            email: String::new(),
+            api_token: None,
+            api_token_env: None,
+            projects: Vec::new(),
+            spaces: Vec::new(),
+            repos: Vec::new(),
+            path: payload.path,
+            paths: paths_vec,
+            glob_patterns: Vec::new(),
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "success": true, "id": payload.id })),
+    )
+}
+
+
+pub async fn select_folder() -> impl IntoResponse {
+    let path = tokio::task::spawn_blocking(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg("POSIX path of (choose folder with prompt \"Select Markdown Directory\")")
+                .output();
+
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let res = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !res.is_empty() {
+                        return Some(res);
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let output = std::process::Command::new("powershell")
+                .arg("-Command")
+                .arg("Add-Type -AssemblyName System.windows.forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }")
+                .output();
+
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let res = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !res.is_empty() {
+                        return Some(res);
+                    }
+                }
+            }
+        }
+
+        None
+    })
+    .await
+    .unwrap_or(None);
+
+    if let Some(p) = path {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "success": true, "path": p })),
+        )
+    } else {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "success": false, "path": null })),
+        )
     }
 }

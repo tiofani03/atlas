@@ -60,6 +60,8 @@ impl SyncEngine {
             }
         }
 
+        let _ = storage.rebuild_all_relationships();
+
         storage.update_last_sync(
             &connector_id,
             connector.provider(),

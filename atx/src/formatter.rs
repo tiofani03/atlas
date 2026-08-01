@@ -1,5 +1,12 @@
 use atlas_core::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact, Storage};
 
+pub fn safe_truncate(text: &str, max_chars: usize) -> &str {
+    match text.char_indices().nth(max_chars) {
+        Some((idx, _)) => &text[..idx],
+        None => text,
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RelationshipCounts {
     pub tickets: usize,
@@ -19,7 +26,12 @@ impl RelationshipCounts {
         let mut counted_ids = std::collections::HashSet::new();
 
         for (_rel, rel_art) in related {
-            if counted_ids.insert(rel_art.id.clone()) {
+            let canon_id = if !rel_art.source_id.is_empty() {
+                rel_art.source_id.clone()
+            } else {
+                rel_art.id.clone()
+            };
+            if counted_ids.insert(canon_id) {
                 match rel_art.kind {
                     ArtifactKind::Ticket | ArtifactKind::Issue => counts.tickets += 1,
                     ArtifactKind::PullRequest
@@ -35,10 +47,15 @@ impl RelationshipCounts {
             }
         }
 
-        // Check art.relationships for target IDs not present in DB
         for rel in &art.relationships {
             let target = &rel.target_id;
-            if counted_ids.insert(target.clone()) {
+            let canon_target = if target.contains(':') && !target.contains('#') && !target.contains('@') {
+                target.split(':').last().unwrap_or(target).to_string()
+            } else {
+                target.clone()
+            };
+
+            if counted_ids.insert(canon_target) {
                 let kind_guess = classify_id(target);
                 match kind_guess {
                     ArtifactKind::Ticket | ArtifactKind::Issue => counts.tickets += 1,
@@ -149,33 +166,105 @@ pub fn classify_id(target: &str) -> ArtifactKind {
 pub fn format_related_item(art: &KnowledgeArtifact) -> String {
     let pid = primary_id(art);
     match art.kind {
-        ArtifactKind::PullRequest => {
-            if pid.contains('#') {
+        ArtifactKind::Repository => {
+            if !art.title.is_empty() && !art.title.starts_with("repo_") {
+                art.title.clone()
+            } else if let Some(ref repo) = art.repository {
+                repo.clone()
+            } else {
+                pid
+            }
+        }
+        ArtifactKind::PullRequest | ArtifactKind::PullRequestReview | ArtifactKind::ReviewComment => {
+            let pr_num = if pid.contains('#') {
                 if let Some(pos) = pid.rfind('#') {
-                    return pid[pos..].to_string();
+                    pid[pos..].to_string()
+                } else {
+                    pid.to_string()
                 }
             } else if !pid.starts_with('#') && pid.chars().all(|c| c.is_ascii_digit()) {
-                return format!("#{}", pid);
+                format!("#{}", pid)
+            } else {
+                pid.to_string()
+            };
+
+            let clean_num = if pr_num.contains('/') {
+                if let Some(pos) = pr_num.rfind('/') {
+                    pr_num[pos + 1..].to_string()
+                } else {
+                    pr_num
+                }
+            } else {
+                pr_num
+            };
+
+            if !art.title.is_empty() && art.title != clean_num {
+                format!("{} • {}", clean_num, art.title)
+            } else {
+                clean_num
             }
-            pid
         }
         ArtifactKind::Commit => {
-            if pid.len() >= 7 {
-                pid[..7].to_string()
+            let sha = if let Some(pos) = pid.rfind('@') {
+                &pid[pos + 1..]
+            } else if let Some(pos) = pid.rfind(':') {
+                &pid[pos + 1..]
+            } else {
+                &pid
+            };
+            let short_sha = if sha.len() >= 8 {
+                &sha[..8]
+            } else {
+                sha
+            };
+
+            let first_line = art.title.lines().next().unwrap_or("").trim();
+            if !first_line.is_empty() && first_line != sha {
+                format!("{} • {}", short_sha, first_line)
+            } else {
+                short_sha.to_string()
+            }
+        }
+        ArtifactKind::Ticket | ArtifactKind::Issue => {
+            if !art.title.is_empty() && art.title != pid {
+                format!("{} • {}", pid, art.title)
+            } else {
+                pid
+            }
+        }
+        ArtifactKind::Release => {
+            if !art.title.is_empty() {
+                art.title.clone()
+            } else if pid.contains('/') {
+                if let Some(pos) = pid.rfind('/') {
+                    pid[pos + 1..].to_string()
+                } else {
+                    pid
+                }
             } else {
                 pid
             }
         }
         ArtifactKind::Document | ArtifactKind::Specification | ArtifactKind::Design => {
             if pid.to_lowercase().starts_with("adr-") || pid.to_lowercase().starts_with("doc-") {
-                pid
+                if !art.title.is_empty() && art.title != pid {
+                    format!("{} • {}", pid, art.title)
+                } else {
+                    pid
+                }
             } else if !art.title.is_empty() {
                 art.title.clone()
             } else {
                 pid
             }
         }
-        _ => pid,
+        _ => {
+            if !art.title.is_empty() && art.title != pid && !pid.starts_with("repo_") {
+                format!("{} • {}", pid, art.title)
+            } else {
+                pid
+            }
+        }
     }
 }
 
@@ -474,8 +563,8 @@ pub fn format_artifact_detail(
 
     if !art.body.is_empty() {
         out.push_str("Description\n\n");
-        if !verbose && art.body.len() > 1000 {
-            out.push_str(&art.body[..1000]);
+        if !verbose && art.body.chars().count() > 1000 {
+            out.push_str(safe_truncate(&art.body, 1000));
             out.push_str("...\n\n");
         } else {
             out.push_str(&art.body);
@@ -493,11 +582,72 @@ pub fn format_artifact_detail(
     }
 
     let related_list = storage
-        .and_then(|s| s.get_related_artifacts(&art.id).ok())
+        .and_then(|s| s.get_related_artifacts(&art.source_id).ok())
+        .or_else(|| storage.and_then(|s| s.get_related_artifacts(&art.id).ok()))
         .unwrap_or_default();
     let counts = RelationshipCounts::from_artifact_and_related(art, &related_list);
 
     out.push_str("Relationships\n\n");
+
+    let mut implements_list = Vec::new();
+    let mut part_of_prs = Vec::new();
+    let mut released_in = Vec::new();
+    let mut seen_items = std::collections::HashSet::new();
+
+    for (rel, rel_art) in &related_list {
+        let label = format_related_item(rel_art);
+        if seen_items.insert(label.clone()) {
+            if rel.relationship_type == "implements" || rel.relationship_type == "implemented_by" {
+                if rel_art.kind == ArtifactKind::Ticket || rel_art.kind == ArtifactKind::Issue {
+                    implements_list.push(label);
+                }
+            } else if rel.relationship_type == "merged_into" || rel.relationship_type == "contains" {
+                if rel_art.kind == ArtifactKind::PullRequest {
+                    part_of_prs.push(label);
+                }
+            } else if rel.relationship_type == "released_in" {
+                released_in.push(label);
+            }
+        }
+    }
+
+    if !implements_list.is_empty() {
+        out.push_str("Implements\n");
+        for item in &implements_list {
+            out.push_str(&format!("  • {}\n", item));
+        }
+        out.push('\n');
+    }
+
+    if !part_of_prs.is_empty() {
+        out.push_str("Part of PR\n");
+        for item in &part_of_prs {
+            out.push_str(&format!("  • {}\n", item));
+        }
+        out.push('\n');
+    }
+
+    if art.kind == ArtifactKind::PullRequest && counts.commits > 0 {
+        out.push_str(&format!("Commits ({})\n\n", counts.commits));
+    }
+
+    if !released_in.is_empty() {
+        out.push_str("Released In\n");
+        for item in &released_in {
+            out.push_str(&format!("  • {}\n", item));
+        }
+        out.push('\n');
+    }
+
+    if art.kind == ArtifactKind::Commit {
+        let file_count = storage
+            .and_then(|s| s.get_commit_file_count(&art.source_id).ok())
+            .unwrap_or(0);
+        if file_count > 0 {
+            out.push_str(&format!("Files Changed\n  {} files\n\n", file_count));
+        }
+    }
+
     out.push_str(&format_dot_aligned("Tickets", counts.tickets, 24));
     out.push('\n');
     out.push_str(&format_dot_aligned("Pull Requests", counts.pull_requests, 24));
@@ -532,31 +682,27 @@ pub fn format_context_package(
 
     let mut out = String::new();
 
-    // Header
+    // 1. Header & Primary Target Metadata
     out.push_str(&format!("Context for {}\n", pkg.target_id));
-    out.push_str(&"=".repeat(12 + pkg.target_id.len()));
+    out.push_str(&"=".repeat(pkg.target_id.len() + 12));
     out.push_str("\n\n");
 
-    // 1. Title
     out.push_str("Title\n-----\n");
     out.push_str(&pkg.title);
     out.push_str("\n\n");
 
-    // 2. Status
     out.push_str("Status\n------\n");
     out.push_str(&pkg.status);
     out.push_str("\n\n");
 
-    // 3. Repository
     out.push_str("Repository\n----------\n");
     out.push_str(pkg.repository.as_deref().unwrap_or("N/A"));
     out.push_str("\n\n");
 
-    // Description (if present)
     if let Some(ref desc) = pkg.description {
         out.push_str("Description\n-----------\n");
-        let clean_desc = if desc.len() > 1000 && !_verbose {
-            format!("{}...", &desc[..1000])
+        let clean_desc = if desc.chars().count() > 1000 && !_verbose {
+            format!("{}...", safe_truncate(desc, 1000))
         } else {
             desc.to_string()
         };
@@ -564,104 +710,144 @@ pub fn format_context_package(
         out.push_str("\n\n");
     }
 
-    // 4. Engineering Readiness
-    out.push_str("Engineering Readiness\n---------------------\n\n");
+    // PHASE 1 — Implementation History
+    if !pkg.related_pull_requests.is_empty() || !pkg.related_commits.is_empty() {
+        out.push_str("Implementation History\n----------------------\n\n");
+
+        if !pkg.related_pull_requests.is_empty() {
+            out.push_str("Previous Pull Requests\n\n");
+            for pr_item in &pkg.related_pull_requests {
+                let pr_num = format_related_item(&pr_item.artifact);
+                let state_str = pr_item
+                    .artifact
+                    .metadata
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("merged");
+                let repo_str = pr_item.artifact.repository.as_deref().unwrap_or("Unknown repo");
+                out.push_str(&format!(
+                    "• PR {}\n  {}\n  Repository: {} | State: {}\n\n",
+                    pr_num, pr_item.artifact.title, repo_str, state_str
+                ));
+            }
+        }
+
+        if !pkg.related_commits.is_empty() {
+            out.push_str("Recent Commits\n\n");
+            for commit_item in &pkg.related_commits {
+                let short_sha = format_related_item(&commit_item.artifact);
+                let repo_str = commit_item.artifact.repository.as_deref().unwrap_or("Unknown repo");
+                out.push_str(&format!(
+                    "• {}\n  {}\n  Repository: {}\n\n",
+                    short_sha, commit_item.artifact.title, repo_str
+                ));
+            }
+        }
+    }
+
+    // PHASE 2 & 3 — Relationship Presentation (Grouped by Semantic Type)
+    let categories_map = group_related_artifacts(pkg);
+    if !categories_map.is_empty() {
+        out.push_str("Relationship Overview\n---------------------\n\n");
+        for (cat_name, items) in categories_map {
+            out.push_str(&format!("{}\n", cat_name));
+            for (id_display, label) in items {
+                out.push_str(&format!("• {} ({})\n", id_display, label));
+            }
+            out.push('\n');
+        }
+    }
+
+    // PHASE 4 — Engineering Assessment
+    out.push_str("Engineering Assessment\n----------------------\n\n");
+    let req_status = if pkg.primary_artifact.is_some() { "✓ Available" } else { "✗ Missing" };
+    let impl_status = if !pkg.related_pull_requests.is_empty() || !pkg.related_commits.is_empty() { "✓ Available" } else { "✗ Missing" };
+    let rel_status = if pkg.related_artifacts.iter().any(|a| a.artifact.kind == ArtifactKind::Release) { "✓ Available" } else { "✗ Missing" };
+    let repo_status = if !pkg.affected_repositories.is_empty() { "✓ Available" } else { "✗ Missing" };
+    let arch_status = if !pkg.architecture_decisions.is_empty() { "✓ Available" } else { "✗ Missing" };
+    let doc_status = if !pkg.related_documentation.is_empty() { "✓ Available" } else { "✗ Missing" };
+
+    out.push_str(&format!("Business Requirements ... {}\n", req_status));
+    out.push_str(&format!("Implementation History .. {}\n", impl_status));
+    out.push_str(&format!("Previous Releases ....... {}\n", rel_status));
+    out.push_str(&format!("Repository History ...... {}\n", repo_status));
+    out.push_str(&format!("Architecture Documents .. {}\n", arch_status));
+    out.push_str(&format!("Design Decisions ........ {}\n\n", doc_status));
+
+    out.push_str("Overall Readiness\n\n");
     out.push_str(&format!("{}\n\n", pkg.engineering_readiness.status_label));
     out.push_str(&format!("{}\n\n", pkg.engineering_readiness.readiness_summary));
 
-    out.push_str("Available\n\n");
-    if !pkg.engineering_readiness.available.is_empty() {
-        for item in &pkg.engineering_readiness.available {
-            out.push_str(&format!("✓ {}\n", item));
-        }
-    } else {
-        out.push_str("(None)\n");
-    }
-
-    if !pkg.engineering_readiness.missing.is_empty() {
-        out.push_str("\nMissing\n\n");
-        for item in &pkg.engineering_readiness.missing {
-            out.push_str(&format!("✗ {}\n", item));
-        }
-    }
-    out.push_str("\n");
-
-    // 5. Context Completeness
+    // PHASE 5 — Context Completeness
     out.push_str("Context Completeness\n--------------------\n\n");
-    out.push_str(&format!("{} {}%\n\n", pkg.completeness.progress_bar, pkg.completeness.score_percentage));
-
-    out.push_str("Scoring\n\n");
-    let all_categories = [
-        ("Repository", !pkg.affected_repositories.is_empty()),
-        ("Related APIs", !pkg.apis.is_empty()),
-        ("Related Issues", !pkg.related_artifacts.is_empty()),
-        ("Architecture Decision", !pkg.architecture_decisions.is_empty()),
-        ("Documentation", !pkg.related_documentation.is_empty()),
-        ("Previous PRs", !pkg.related_pull_requests.is_empty()),
-        ("Commit History", !pkg.related_commits.is_empty()),
-    ];
-
-    for (label, is_present) in all_categories {
-        let mark = if is_present { "✓" } else { "✗" };
-        let dots = format_dots(label, mark, 28);
+    for cs in &pkg.completeness.category_scores {
+        let dots = format_dots(&cs.category_name, &format!("{} {}%", cs.progress_bar, cs.score_percentage), 38);
         out.push_str(&dots);
         out.push('\n');
     }
     out.push('\n');
+    let overall_dots = format_dots(
+        "Overall Completeness",
+        &format!("{} {}%", pkg.completeness.progress_bar, pkg.completeness.score_percentage),
+        38,
+    );
+    out.push_str(&overall_dots);
+    out.push_str("\n\n");
 
-    // 6. Recommended Reading
-    if !pkg.recommended_reading.is_empty() {
-        out.push_str("Recommended Reading\n-------------------\n\n");
-        for (idx, item) in pkg.recommended_reading.iter().enumerate() {
-            out.push_str(&format!("{}. {}\n   {}\n\n", idx + 1, item.source_id, item.title));
-        }
-    }
+    // PHASE 6 — AI Implementation Briefing (LLM-Optimized Section)
+    if let Some(ref briefing) = pkg.ai_briefing {
+        out.push_str("AI Implementation Briefing\n--------------------------\n\n");
+        out.push_str(&format!("Feature:\n{}\n\n", briefing.feature_name));
+        out.push_str(&format!("Repository:\n{}\n\n", briefing.primary_repository));
 
-    // 7. Implementation Hints
-    if !pkg.implementation_hints.is_empty() {
-        out.push_str("Implementation Hints\n--------------------\n\n");
-        for hint in &pkg.implementation_hints {
-            out.push_str(&format!("• {}\n\n", hint));
-        }
-    }
-
-    // 8. Suggested Next Actions
-    if !pkg.suggested_next_actions.is_empty() {
-        out.push_str("Suggested Next Actions\n----------------------\n\n");
-        for action in &pkg.suggested_next_actions {
-            out.push_str(&format!("{}. {}\n   {}\n", action.step, action.action, action.detail));
-            if let Some(ref cmd) = action.command {
-                out.push_str(&format!("   {}\n", cmd));
+        if !briefing.previous_prs.is_empty() {
+            out.push_str("Previously implemented in:\n");
+            for pr in &briefing.previous_prs {
+                out.push_str(&format!("• {}\n", pr));
             }
             out.push('\n');
         }
-    }
 
-    // 9. Related Artifacts
-    let categories_map = group_related_artifacts(pkg);
-    if !categories_map.is_empty() {
-        out.push_str("Related Artifacts\n-----------------\n\n");
-        for (cat_name, items) in categories_map {
-            out.push_str(&format!("{}\n", cat_name));
-            for (id_display, label) in items {
-                out.push_str(&format!("  • {} ({})\n", id_display, label));
+        if !briefing.released_in.is_empty() {
+            out.push_str("Released in:\n");
+            for rel in &briefing.released_in {
+                out.push_str(&format!("• {}\n", rel));
             }
             out.push('\n');
         }
+
+        if !briefing.related_repositories.is_empty() {
+            out.push_str("Related repositories:\n");
+            for repo in &briefing.related_repositories {
+                out.push_str(&format!("• {}\n", repo));
+            }
+            out.push('\n');
+        }
+
+        if !briefing.known_dependencies.is_empty() {
+            out.push_str("Known dependencies:\n");
+            for dep in &briefing.known_dependencies {
+                out.push_str(&format!("• {}\n", dep));
+            }
+            out.push('\n');
+        }
+
+        out.push_str(&format!("Architecture documentation: {}\n", briefing.architecture_documentation_status));
+        out.push_str(&format!("Historical implementation : {}\n", briefing.historical_implementation_status));
+        out.push_str(&format!("Confidence level          : {}\n\n", briefing.confidence_level));
     }
 
-    // 10. Source Information
+    // Source Metadata Information
     out.push_str("Source Information\n------------------\n\n");
     out.push_str(&format!("{:<14}: {}\n", "Provider", pkg.source_info.provider));
-    out.push_str(&format!("{:<14}: {}\n", "Repository", pkg.source_info.repository.as_deref().unwrap_or("N/A")));
+    out.push_str(&format!(
+        "{:<14}: {}\n",
+        "Repository",
+        pkg.source_info.repository.as_deref().unwrap_or("N/A")
+    ));
     out.push_str(&format!("{:<14}: {}\n", "Updated", pkg.source_info.updated_at));
     out.push_str(&format!("{:<14}: {}\n", "Source URL", pkg.source_info.source_url));
-    out.push_str(&format!("{:<14}: {}\n\n", "Last Synced", pkg.source_info.synced_at));
-
-    // Summary (Engineering Assessment)
-    out.push_str("Engineering Assessment\n----------------------\n\n");
-    out.push_str(&pkg.summary);
-    out.push('\n');
+    out.push_str(&format!("{:<14}: {}\n", "Last Synced", pkg.source_info.synced_at));
 
     out.trim_end().to_string()
 }
@@ -675,7 +861,7 @@ fn format_dots(label: &str, value: &str, total_width: usize) -> String {
 }
 
 fn group_related_artifacts(pkg: &atlas_core::ContextPackage) -> Vec<(String, Vec<(String, String)>)> {
-    let mut groups: std::collections::HashMap<String, Vec<(String, String)>> = std::collections::HashMap::new();
+    let mut groups: std::collections::BTreeMap<String, Vec<(String, String)>> = std::collections::BTreeMap::new();
 
     let all_collections = [
         &pkg.architecture_decisions,
@@ -689,8 +875,21 @@ fn group_related_artifacts(pkg: &atlas_core::ContextPackage) -> Vec<(String, Vec
 
     for col in all_collections {
         for item in col {
-            let cat_name = item.relationship_category.clone();
+            let cat_name = match item.artifact.kind {
+                ArtifactKind::Repository => "Repositories",
+                ArtifactKind::PullRequest | ArtifactKind::PullRequestReview | ArtifactKind::ReviewComment => "Pull Requests",
+                ArtifactKind::Commit => "Commits",
+                ArtifactKind::Release => "Release History",
+                ArtifactKind::Ticket | ArtifactKind::Issue => "Related Tickets",
+                ArtifactKind::Document | ArtifactKind::Specification | ArtifactKind::Design => "Architecture & Specs",
+                _ => "Other Related Items",
+            }.to_string();
+
             let id_display = format_related_item(&item.artifact);
+            if id_display.starts_with("repo_") || id_display.len() <= 2 {
+                continue;
+            }
+
             let entry = groups.entry(cat_name).or_default();
             if !entry.iter().any(|(id, _)| id == &id_display) {
                 entry.push((id_display, item.relationship_label.clone()));
@@ -699,13 +898,15 @@ fn group_related_artifacts(pkg: &atlas_core::ContextPackage) -> Vec<(String, Vec
     }
 
     if !pkg.affected_repositories.is_empty() {
-        let repo_items: Vec<(String, String)> = pkg.affected_repositories.iter().map(|r| (r.clone(), "target repo".to_string())).collect();
-        groups.insert("Repositories".to_string(), repo_items);
+        let entry = groups.entry("Repositories".to_string()).or_default();
+        for repo in &pkg.affected_repositories {
+            if !entry.iter().any(|(id, _)| id == repo) {
+                entry.push((repo.clone(), "target repo".to_string()));
+            }
+        }
     }
 
-    let mut result: Vec<(String, Vec<(String, String)>)> = groups.into_iter().collect();
-    result.sort_by(|a, b| a.0.cmp(&b.0));
-    result
+    groups.into_iter().collect()
 }
 
 #[cfg(test)]
@@ -870,6 +1071,12 @@ mod tests {
             completeness: atlas_core::CompletenessReport {
                 score_percentage: 62,
                 progress_bar: "██████░░░░".to_string(),
+                category_scores: vec![atlas_core::CategoryScore {
+                    category_name: "Business Context".to_string(),
+                    score_percentage: 100,
+                    progress_bar: "██████████".to_string(),
+                    is_available: true,
+                }],
                 available_categories: vec![atlas_core::CategoryAvailability {
                     category: "Repository".to_string(),
                     is_available: true,
@@ -931,6 +1138,7 @@ mod tests {
                 score: 85.0,
                 is_direct_graph: true,
             }],
+            ai_briefing: None,
             source_info: atlas_core::SourceInfo {
                 provider: "Jira".to_string(),
                 repository: Some("INIT".to_string()),
@@ -947,27 +1155,14 @@ mod tests {
         assert!(formatted.contains("Title\n-----\nMongoDB Atlas Migration"));
         assert!(formatted.contains("Status\n------\nDone"));
         assert!(formatted.contains("Repository\n----------\nINIT"));
-        assert!(formatted.contains("Engineering Readiness"));
+        assert!(formatted.contains("Engineering Assessment"));
         assert!(formatted.contains("Ready for implementation."));
-        assert!(formatted.contains("✓ Repository"));
-        assert!(formatted.contains("✗ Pull Requests"));
         assert!(formatted.contains("Context Completeness"));
-        assert!(formatted.contains("██████░░░░ 62%"));
-        assert!(formatted.contains("Scoring"));
-        assert!(formatted.contains("Repository"));
-        assert!(formatted.contains("Recommended Reading"));
-        assert!(formatted.contains("1. ADR-007"));
-        assert!(formatted.contains("MongoDB Architecture"));
-        assert!(formatted.contains("Implementation Hints"));
-        assert!(formatted.contains("• Review ADR-007 before implementation."));
-        assert!(formatted.contains("Suggested Next Actions"));
-        assert!(formatted.contains("1. Review ADR-007"));
-        assert!(formatted.contains("Related Artifacts"));
-        assert!(formatted.contains("• ADR-007 (defines architecture)"));
+        assert!(formatted.contains("Business Context"));
+        assert!(formatted.contains("Relationship Overview"));
+        assert!(formatted.contains("ADR-007"));
         assert!(formatted.contains("Source Information"));
         assert!(formatted.contains("Provider"));
         assert!(formatted.contains("Jira"));
-        assert!(formatted.contains("Engineering Assessment"));
-        assert!(formatted.contains("Implementation can begin."));
     }
 }

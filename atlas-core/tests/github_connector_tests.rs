@@ -146,6 +146,9 @@ async fn test_github_connector_sync_all_artifact_types() -> anyhow::Result<()> {
         projects: vec![],
         spaces: vec![],
         repos: vec!["owner/atlas".to_string()],
+        path: None,
+        paths: vec![],
+        glob_patterns: vec![],
     };
 
     let connector = GithubConnector::new("github-test".to_string(), config)?;

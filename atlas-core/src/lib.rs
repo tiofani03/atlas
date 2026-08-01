@@ -8,11 +8,12 @@ pub mod sync;
 
 pub use config::{Config, ConnectorConfig};
 pub use connectors::{
-    confluence::ConfluenceConnector, github::GithubConnector, jira::JiraConnector, Connector,
-    ConnectorInstance,
+    confluence::ConfluenceConnector, github::GithubConnector, jira::JiraConnector,
+    local_git::{LocalGitConnector, LocalGitRepository, RepositoryRegistry},
+    markdown::MarkdownConnector, Connector, ConnectorInstance,
 };
 pub use context::{
-    CategoryAvailability, CompletenessReport, ContextBuilder, ContextOptions, ContextPackage,
+    AiBriefing, CategoryAvailability, CategoryScore, CompletenessReport, ContextBuilder, ContextOptions, ContextPackage,
     DependencyEdge, EngineeringReadiness, LabeledArtifact, NextAction, RecommendedItem, SourceInfo,
 };
 pub use domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};

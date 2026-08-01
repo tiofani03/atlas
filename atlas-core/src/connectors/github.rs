@@ -406,6 +406,22 @@ impl Connector for GithubConnector {
 
                     let checksum = KnowledgeArtifact::compute_checksum(&title, summary.as_deref(), &body, &tags);
 
+                    let mut pr_meta = item.clone();
+                    if let Some(obj) = pr_meta.as_object_mut() {
+                        obj.insert("artifact_type".to_string(), serde_json::json!("pull_request"));
+                        obj.insert("repository".to_string(), serde_json::json!(repo_name));
+                        obj.insert("provider".to_string(), serde_json::json!("github"));
+                        obj.insert("number".to_string(), serde_json::json!(number));
+                        obj.insert("title".to_string(), serde_json::json!(title));
+                        obj.insert("state".to_string(), serde_json::json!(state));
+                        if let Some(author) = item.get("user").and_then(|u| u.get("login")).and_then(|v| v.as_str()) {
+                            obj.insert("author".to_string(), serde_json::json!(author));
+                        }
+                        if let Some(branch) = item.get("head").and_then(|h| h.get("ref")).and_then(|v| v.as_str()) {
+                            obj.insert("branch".to_string(), serde_json::json!(branch));
+                        }
+                    }
+
                     all_artifacts.push(KnowledgeArtifact {
                         id,
                         kind: ArtifactKind::PullRequest,
@@ -422,8 +438,9 @@ impl Connector for GithubConnector {
                         updated_at,
                         synced_at: Utc::now(),
                         checksum,
-                        metadata: item.clone(),
+                        metadata: pr_meta,
                     });
+
 
                     // ---------------------------------------------------------
                     // 3b. Pull Request Reviews (Only for open or recent PRs to avoid HTTP sub-request explosion)
@@ -673,11 +690,13 @@ impl Connector for GithubConnector {
                     if let Some(parents) = item.get("parents").and_then(|v| v.as_array()) {
                         for p in parents {
                             if let Some(parent_sha) = p.get("sha").and_then(|v| v.as_str()) {
-                                relationships.push(ArtifactRelationship {
-                                    source_id: source_id.clone(),
-                                    target_id: format!("{}@{}", repo_name, parent_sha),
-                                    relationship_type: "parent_commit".to_string(),
-                                });
+                                if parent_sha != sha {
+                                    relationships.push(ArtifactRelationship {
+                                        source_id: source_id.clone(),
+                                        target_id: format!("{}@{}", repo_name, parent_sha),
+                                        relationship_type: "parent_commit".to_string(),
+                                    });
+                                }
                             }
                         }
                     }

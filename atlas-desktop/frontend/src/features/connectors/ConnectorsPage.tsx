@@ -4,6 +4,8 @@ import { api } from '../../services/api';
 import { ConfigureJiraModal } from './ConfigureJiraModal';
 import { ConfigureConfluenceModal } from './ConfigureConfluenceModal';
 import { ConfigureGithubModal } from './ConfigureGithubModal';
+import { ConfigureMarkdownModal } from './ConfigureMarkdownModal';
+import { ConfigureLocalGitModal } from './ConfigureLocalGitModal';
 import {
   RefreshCw,
   Settings2,
@@ -198,6 +200,8 @@ export const ConnectorsPage: React.FC = () => {
   const [isJiraOpen, setIsJiraOpen] = useState(false);
   const [isConfluenceOpen, setIsConfluenceOpen] = useState(false);
   const [isGithubOpen, setIsGithubOpen] = useState(false);
+  const [isMarkdownOpen, setIsMarkdownOpen] = useState(false);
+  const [isLocalGitOpen, setIsLocalGitOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -223,8 +227,10 @@ export const ConnectorsPage: React.FC = () => {
   const jiraConfig = connectors?.find((c) => c.provider === 'jira');
   const confluenceConfig = connectors?.find((c) => c.provider === 'confluence');
   const githubConfig = connectors?.find((c) => c.provider === 'github');
+  const markdownConfig = connectors?.find((c) => c.provider === 'markdown');
+  const localGitConfig = connectors?.find((c) => c.provider === 'local_git');
 
-  const configuredCount = (jiraConfig ? 1 : 0) + (confluenceConfig ? 1 : 0) + (githubConfig ? 1 : 0);
+  const configuredCount = (jiraConfig ? 1 : 0) + (confluenceConfig ? 1 : 0) + (githubConfig ? 1 : 0) + (markdownConfig ? 1 : 0) + (localGitConfig ? 1 : 0);
 
   const categories = [
     { id: 'all', label: 'All Connectors' },
@@ -249,7 +255,7 @@ export const ConnectorsPage: React.FC = () => {
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-2xl leading-relaxed">
-              Ingest engineering context from Jira, Confluence, GitHub, Slack, and specifications into a unified local SQLite + FTS5 knowledge graph.
+              Ingest engineering context from Jira, Confluence, GitHub, Markdown docs, and specifications into a unified local SQLite + FTS5 knowledge graph.
             </p>
           </div>
 
@@ -404,12 +410,26 @@ export const ConnectorsPage: React.FC = () => {
             {/* Local Git Repo */}
             <ConnectorCard
               name="Local Git Repository"
-              subtitle="Disk .git & Local Logs"
-              description="Sub-second local disk parsing for 100k+ commits, diffs, and local branch history."
+              subtitle="Disk .git & Local Engine"
+              description="Read-only local Git metadata extraction, branch resolution, tracked file enumeration, and state sync."
               icon={<HardDrive className="w-5 h-5" />}
               iconBgClass="bg-emerald-50 dark:bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30"
-              isAvailable={false}
-              tag={{ label: 'v0.3 Local Engine', color: 'emerald' }}
+              isAvailable={true}
+              isConfigured={!!localGitConfig}
+              configuredDetails={
+                localGitConfig
+                  ? {
+                      urlLabel: 'Root Path',
+                      urlValue: localGitConfig.paths?.join(', ') || localGitConfig.path || './',
+                      itemsLabel: 'Repositories',
+                      itemsValue: `${localGitConfig.paths?.length || 1} Registered`,
+                      lastSynced: localGitConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsLocalGitOpen(true)}
+              onSync={() => localGitConfig && syncMutation.mutate(localGitConfig.id)}
+              isSyncing={syncProgress?.is_running}
             />
 
             {/* GitHub Card */}
@@ -584,8 +604,22 @@ export const ConnectorsPage: React.FC = () => {
               description="Index local Markdown files, Architecture Decision Records (ADRs), and Obsidian vaults."
               icon={<FileText className="w-5 h-5" />}
               iconBgClass="bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              isAvailable={true}
+              isConfigured={!!markdownConfig}
+              configuredDetails={
+                markdownConfig
+                  ? {
+                      urlLabel: 'Directory Path',
+                      urlValue: markdownConfig.path || './docs',
+                      itemsLabel: 'Glob Patterns',
+                      itemsValue: markdownConfig.glob_patterns?.join(', ') || '*.md',
+                      lastSynced: markdownConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsMarkdownOpen(true)}
+              onSync={() => markdownConfig && syncMutation.mutate(markdownConfig.id)}
+              isSyncing={syncProgress?.is_running}
             />
 
             {/* Spreadsheets */}
@@ -633,6 +667,26 @@ export const ConnectorsPage: React.FC = () => {
           id: githubConfig.id,
           instance_url: githubConfig.instance_url,
           repos: githubConfig.repos,
+        } : undefined}
+      />
+      <ConfigureMarkdownModal
+        isOpen={isMarkdownOpen}
+        onClose={() => setIsMarkdownOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={markdownConfig ? {
+          id: markdownConfig.id,
+          path: markdownConfig.path,
+          glob_patterns: markdownConfig.glob_patterns,
+        } : undefined}
+      />
+      <ConfigureLocalGitModal
+        isOpen={isLocalGitOpen}
+        onClose={() => setIsLocalGitOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={localGitConfig ? {
+          id: localGitConfig.id,
+          path: localGitConfig.path,
+          paths: localGitConfig.paths,
         } : undefined}
       />
     </div>

@@ -34,8 +34,10 @@ fn default_log_level() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectorConfig {
-    pub provider: String, // "jira", "confluence", or "github"
+    pub provider: String, // "jira", "confluence", "github", or "markdown"
+    #[serde(default)]
     pub instance_url: String,
+    #[serde(default)]
     pub email: String,
     pub api_token: Option<String>,
     pub api_token_env: Option<String>,
@@ -45,9 +47,29 @@ pub struct ConnectorConfig {
     pub spaces: Vec<String>,
     #[serde(default)]
     pub repos: Vec<String>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub glob_patterns: Vec<String>,
 }
 
 impl ConnectorConfig {
+    pub fn get_paths(&self) -> Vec<String> {
+        if !self.paths.is_empty() {
+            return self.paths.clone();
+        }
+        if let Some(ref p) = self.path {
+            return p
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        Vec::new()
+    }
+
     pub fn get_api_token(&self) -> Result<String> {
         if let Some(ref token) = self.api_token {
             if !token.is_empty() {

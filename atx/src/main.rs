@@ -178,6 +178,26 @@ enum Commands {
 
     /// Run stdio Model Context Protocol (MCP) Server for AI tools
     Mcp,
+
+    /// Rebuild relationship links and commit indices across existing database artifacts
+    Reindex {
+        /// Optional target (e.g. "links" or "relationships")
+        #[arg(default_value = "links")]
+        target: String,
+    },
+
+    /// Alias for reindex command
+    Repair {
+        /// Optional target (e.g. "relationships" or "links")
+        #[arg(default_value = "relationships")]
+        target: String,
+    },
+
+    /// Diagnostic command explaining why any relationship exists (source parser + rule + artifact IDs)
+    Explain {
+        /// Artifact ID or source_id
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -320,6 +340,9 @@ async fn main() -> Result<()> {
                             projects: project_list,
                             spaces: Vec::new(),
                             repos: Vec::new(),
+                            path: None,
+                            paths: Vec::new(),
+                            glob_patterns: Vec::new(),
                         },
                     );
 
@@ -367,6 +390,9 @@ async fn main() -> Result<()> {
                             projects: Vec::new(),
                             spaces: space_list,
                             repos: Vec::new(),
+                            path: None,
+                            paths: Vec::new(),
+                            glob_patterns: Vec::new(),
                         },
                     );
 
@@ -412,6 +438,9 @@ async fn main() -> Result<()> {
                             projects: Vec::new(),
                             spaces: Vec::new(),
                             repos: repo_list,
+                            path: None,
+                            paths: Vec::new(),
+                            glob_patterns: Vec::new(),
                         },
                     );
 
@@ -525,20 +554,27 @@ async fn main() -> Result<()> {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
-            match storage.get_artifact_by_id(&id)? {
-                Some(artifact) => {
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&artifact)?);
-                    } else {
-                        println!(
-                            "{}",
-                            formatter::format_artifact_detail(&artifact, Some(&storage), verbose, raw)
-                        );
-                    }
+            let matches = storage.resolve_artifact_by_alias(&id)?;
+            if matches.is_empty() {
+                println!("Artifact '{}' not found.", id);
+            } else if matches.len() == 1 {
+                let artifact = &matches[0];
+                if json {
+                    println!("{}", serde_json::to_string_pretty(artifact)?);
+                } else {
+                    println!(
+                        "{}",
+                        formatter::format_artifact_detail(artifact, Some(&storage), verbose, raw)
+                    );
                 }
-                None => {
-                    println!("Artifact '{}' not found.", id);
+            } else {
+                println!("Ambiguous query '{}'. Found {} matching artifacts:\n", id, matches.len());
+                for (idx, m) in matches.iter().enumerate() {
+                    let label = formatter::format_related_item(m);
+                    let repo = m.repository.as_deref().unwrap_or("no-repo");
+                    println!("{:2}. [{}] {} ({}) — source_id: {}", idx + 1, m.kind.to_string().to_uppercase(), label, repo, m.source_id);
                 }
+                println!("\nSpecify full canonical source_id or repo prefix (e.g. atx artifact owner/repo#id).");
             }
         }
 
@@ -551,8 +587,15 @@ async fn main() -> Result<()> {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
-            let key_artifact = storage.get_artifact_by_id(&id).ok().flatten();
-            let related = storage.get_related_artifacts(&id)?;
+            let matches = storage.resolve_artifact_by_alias(&id)?;
+            let target_key = if let Some(first) = matches.first() {
+                &first.source_id
+            } else {
+                &id
+            };
+
+            let key_artifact = matches.first().cloned();
+            let related = storage.get_related_artifacts(target_key)?;
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&related)?);
@@ -560,7 +603,7 @@ async fn main() -> Result<()> {
                 println!(
                     "{}",
                     formatter::format_related_results(
-                        &id,
+                        target_key,
                         key_artifact.as_ref(),
                         &related,
                         verbose,
@@ -644,6 +687,16 @@ async fn main() -> Result<()> {
 
                 println!("  - [{}] ({}) -> Last Sync: {}", id, conn_cfg.provider, sync_str);
             }
+
+            let issues = storage.validate_graph_integrity().unwrap_or_default();
+            if issues.is_empty() {
+                println!("\nGraph Integrity:      PASS (0 issues detected)");
+            } else {
+                println!("\nGraph Integrity:      FAIL ({} issues detected)", issues.len());
+                for issue in issues.iter().take(5) {
+                    println!("  ⚠️  {}", issue);
+                }
+            }
         }
 
         Commands::Reset { force } | Commands::Clear { force } => {
@@ -675,7 +728,70 @@ async fn main() -> Result<()> {
 
             atlas_core::mcp::run_stdio_mcp_server(storage).await?;
         }
+
+        Commands::Reindex { target: _ } | Commands::Repair { target: _ } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+
+            println!("Rebuilding knowledge graph relationships and commit indices...");
+            let (total_arts, total_rels) = storage.rebuild_all_relationships()?;
+            println!(
+                "✨ Successfully rebuilt relationships for {} artifacts! ({} graph edges active)",
+                total_arts, total_rels
+            );
+        }
+
+        Commands::Explain { id } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+
+            let matches = storage.resolve_artifact_by_alias(&id)?;
+            if matches.is_empty() {
+                println!("Artifact '{}' not found.", id);
+                return Ok(());
+            }
+
+            let art = &matches[0];
+            println!("Explanation for {}", art.source_id);
+            println!("Kind: {}", art.kind);
+            println!("Title: {}\n", art.title);
+
+            let related = storage.get_related_artifacts(&art.source_id)?;
+            if related.is_empty() {
+                println!("No relationships found for artifact.");
+                return Ok(());
+            }
+
+            println!("Relationships & Link Rules:\n");
+            for (idx, (rel, target_art)) in related.iter().enumerate() {
+                let rule_desc = match rel.relationship_type.as_str() {
+                    "merged_into" | "contains" => {
+                        "Deterministic PR/Release Rule: PR, commit, or artifact included in PR or release"
+                    }
+                    "implements" | "implemented_by" => {
+                        "Deterministic Ticket Rule: parsed ticket key (e.g. INIT-488) from commit/PR text"
+                    }
+                    "parent_commit" => "Git Parent Rule: parent commit pointer from Git history",
+                    "child_commit" => "Git Child Rule: child commit pointing to this commit as parent",
+                    "belongs_to" | "owns" => "Hierarchy Rule: container/repository ownership",
+                    "references" | "referenced_by" => "Reference Rule: text cross-reference",
+                    "released_in" | "contains_release" => "Release Ancestry Rule: release tag / version target",
+                    _ => "General Relationship Rule",
+                };
+
+                println!(
+                    "{}. [{}] -> {}\n   Rule: {}\n   Target: [{}] {}\n",
+                    idx + 1,
+                    rel.relationship_type,
+                    rel.target_id,
+                    rule_desc,
+                    target_art.kind.to_string().to_uppercase(),
+                    target_art.title
+                );
+            }
+        }
     }
 
     Ok(())
 }
+

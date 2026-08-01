@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use atlas_core::{
     ConfluenceConnector, ConnectorConfig, ConnectorInstance, GithubConnector, JiraConnector,
-    SyncEngine,
+    LocalGitConnector, MarkdownConnector, SyncEngine,
 };
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::Utc;
@@ -67,6 +67,15 @@ pub async fn trigger_sync(
                     "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
                     "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
                     "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
+                    "markdown" => {
+                        let path_str = connector_cfg.path.as_deref().unwrap_or(".");
+                        let mut conn = MarkdownConnector::new(id.clone(), path_str);
+                        if !connector_cfg.glob_patterns.is_empty() {
+                            conn = conn.with_glob_patterns(connector_cfg.glob_patterns.clone());
+                        }
+                        ConnectorInstance::Markdown(conn)
+                    }
+                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(id.clone(), &connector_cfg)?),
                     _ => continue,
                 };
 

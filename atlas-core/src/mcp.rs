@@ -331,8 +331,8 @@ fn format_results_as_markdown(artifacts: &[KnowledgeArtifact]) -> String {
             out.push_str(&format!("- **Relationships**: {}\n", rel_strs.join("; ")));
         }
         out.push_str("\n**Body**:\n");
-        let body_snippet = if art.body.len() > 500 {
-            format!("{}...", &art.body[..500])
+        let body_snippet = if art.body.chars().count() > 500 {
+            format!("{}...", art.body.chars().take(500).collect::<String>())
         } else {
             art.body.clone()
         };
