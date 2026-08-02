@@ -114,12 +114,14 @@ export const ConfigureBitbucketModal: React.FC<ModalProps> = ({ isOpen, onClose,
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">App Password / Token</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">
+              App Password / Token {initialConfig && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">(Saved — leave empty to keep unchanged)</span>}
+            </label>
             <input
               type="password"
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
-              placeholder={initialConfig ? 'Leave blank to keep existing password' : 'Bitbucket App Password'}
+              placeholder={initialConfig ? '•••••••• (Token Saved)' : 'Bitbucket App Password'}
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>

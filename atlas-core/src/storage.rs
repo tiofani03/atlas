@@ -136,6 +136,37 @@ impl Storage {
                 error_message TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS connector_checkpoints (
+                connector_id TEXT PRIMARY KEY NOT NULL,
+                last_synced_at TEXT NOT NULL,
+                pagination_page INTEGER NOT NULL,
+                opaque_token TEXT,
+                total_items_processed INTEGER NOT NULL,
+                checksum_watermark TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS connector_health (
+                connector_id TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL,
+                state TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                auth_valid INTEGER NOT NULL,
+                api_reachable INTEGER NOT NULL,
+                p95_latency_ms INTEGER NOT NULL,
+                success_rate REAL NOT NULL,
+                last_checked_at TEXT NOT NULL,
+                details TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS dead_letter_queue (
+                id TEXT PRIMARY KEY NOT NULL,
+                connector_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                error_message TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
                 id UNINDEXED,
                 title,
@@ -2191,6 +2222,139 @@ impl Storage {
             created_at,
             metadata,
         })
+    }
+
+    pub fn save_checkpoint(&self, cursor: &crate::connectors::v2::SyncCursor) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO connector_checkpoints (connector_id, last_synced_at, pagination_page, opaque_token, total_items_processed, checksum_watermark)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(connector_id) DO UPDATE SET
+                last_synced_at = excluded.last_synced_at,
+                pagination_page = excluded.pagination_page,
+                opaque_token = excluded.opaque_token,
+                total_items_processed = excluded.total_items_processed,
+                checksum_watermark = excluded.checksum_watermark",
+            params![
+                cursor.connector_id,
+                cursor.last_synced_at.to_rfc3339(),
+                cursor.pagination_page,
+                cursor.opaque_token,
+                cursor.total_items_processed,
+                cursor.checksum_watermark,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_checkpoint(&self, connector_id: &str) -> Result<Option<crate::connectors::v2::SyncCursor>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT connector_id, last_synced_at, pagination_page, opaque_token, total_items_processed, checksum_watermark
+             FROM connector_checkpoints WHERE connector_id = ?1",
+        )?;
+
+        let cursor = stmt
+            .query_row(params![connector_id], |row| {
+                let last_str: String = row.get(1)?;
+                let last_synced_at = DateTime::parse_from_rfc3339(&last_str)
+                    .map(|d| d.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
+
+                Ok(crate::connectors::v2::SyncCursor {
+                    connector_id: row.get(0)?,
+                    last_synced_at,
+                    pagination_page: row.get(2)?,
+                    opaque_token: row.get(3)?,
+                    total_items_processed: row.get(4)?,
+                    checksum_watermark: row.get(5)?,
+                })
+            })
+            .optional()?;
+
+        Ok(cursor)
+    }
+
+    pub fn save_health_report(&self, report: &crate::health::HealthReport) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO connector_health (connector_id, provider, state, score, auth_valid, api_reachable, p95_latency_ms, success_rate, last_checked_at, details)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(connector_id) DO UPDATE SET
+                provider = excluded.provider,
+                state = excluded.state,
+                score = excluded.score,
+                auth_valid = excluded.auth_valid,
+                api_reachable = excluded.api_reachable,
+                p95_latency_ms = excluded.p95_latency_ms,
+                success_rate = excluded.success_rate,
+                last_checked_at = excluded.last_checked_at,
+                details = excluded.details",
+            params![
+                report.connector_id,
+                report.provider,
+                report.state.to_string(),
+                report.score,
+                if report.auth_valid { 1 } else { 0 },
+                if report.api_reachable { 1 } else { 0 },
+                report.p95_latency_ms,
+                report.success_rate,
+                report.last_checked_at.to_rfc3339(),
+                report.details,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_all_health_reports(&self) -> Result<Vec<crate::health::HealthReport>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT connector_id, provider, state, score, auth_valid, api_reachable, p95_latency_ms, success_rate, last_checked_at, details
+             FROM connector_health ORDER BY connector_id ASC",
+        )?;
+
+        let reports = stmt
+            .query_map([], |row| {
+                let state_str: String = row.get(2)?;
+                let state = match state_str.as_str() {
+                    "HEALTHY" => crate::health::ConnectorHealthState::Healthy,
+                    "DEGRADED" => crate::health::ConnectorHealthState::Degraded,
+                    "UNAVAILABLE" => crate::health::ConnectorHealthState::Unavailable,
+                    _ => crate::health::ConnectorHealthState::Unconfigured,
+                };
+
+                let checked_str: String = row.get(8)?;
+                let last_checked_at = DateTime::parse_from_rfc3339(&checked_str)
+                    .map(|d| d.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
+
+                Ok(crate::health::HealthReport {
+                    connector_id: row.get(0)?,
+                    provider: row.get(1)?,
+                    state,
+                    score: row.get(3)?,
+                    auth_valid: row.get::<_, i32>(4)? != 0,
+                    api_reachable: row.get::<_, i32>(5)? != 0,
+                    p95_latency_ms: row.get(6)?,
+                    success_rate: row.get(7)?,
+                    last_checked_at,
+                    details: row.get(9)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(reports)
+    }
+
+    pub fn push_dlq(&self, connector_id: &str, source_id: &str, error: &str, payload: &str) -> Result<()> {
+        let conn = self.get_connection()?;
+        let id = format!("dlq-{}-{}", connector_id, Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        conn.execute(
+            "INSERT INTO dead_letter_queue (id, connector_id, source_id, error_message, payload, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, connector_id, source_id, error, payload, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
     }
 }
 

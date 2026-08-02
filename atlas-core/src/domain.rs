@@ -217,6 +217,139 @@ impl KnowledgeArtifact {
             provider: self.provider.clone(),
         })
     }
+
+    /// Classify artifact into its active set of domain aspects
+    pub fn classify_aspects(&self) -> std::collections::HashSet<DomainAspect> {
+        let mut aspects = std::collections::HashSet::new();
+
+        match self.kind {
+            ArtifactKind::Repository
+            | ArtifactKind::PullRequest
+            | ArtifactKind::PullRequestReview
+            | ArtifactKind::ReviewComment
+            | ArtifactKind::Commit
+            | ArtifactKind::WorkflowRun
+            | ArtifactKind::Deployment => {
+                aspects.insert(DomainAspect::CodeImplementation);
+            }
+            ArtifactKind::Issue | ArtifactKind::Ticket => {
+                aspects.insert(DomainAspect::TaskTracking);
+            }
+            ArtifactKind::Discussion => {
+                aspects.insert(DomainAspect::Collaboration);
+            }
+            ArtifactKind::Document
+            | ArtifactKind::Specification => {
+                aspects.insert(DomainAspect::Documentation);
+            }
+            ArtifactKind::Design => {
+                aspects.insert(DomainAspect::Design);
+            }
+            ArtifactKind::Release => {
+                aspects.insert(DomainAspect::CodeImplementation);
+            }
+            _ => {}
+        }
+
+        let lower_id = self.source_id.to_lowercase();
+        let lower_title = self.title.to_lowercase();
+        let lower_provider = self.provider.to_lowercase();
+
+        // Check for Architecture indicators
+        if lower_id.starts_with("adr-")
+            || lower_id.contains("adr")
+            || lower_title.contains("adr")
+            || lower_title.contains("rfc")
+            || lower_title.contains("architecture")
+            || lower_title.contains("design decision")
+            || self.tags.iter().any(|t| {
+                let lt = t.to_lowercase();
+                lt.contains("adr") || lt.contains("architecture") || lt.contains("rfc")
+            })
+        {
+            aspects.insert(DomainAspect::Architecture);
+        }
+
+        // Check for Collaboration indicators
+        if lower_title.contains("retro")
+            || lower_title.contains("sprint planning")
+            || lower_title.contains("meeting notes")
+            || lower_title.contains("standup")
+            || lower_provider == "slack"
+            || lower_provider == "discord"
+        {
+            aspects.insert(DomainAspect::Collaboration);
+        }
+
+        // Check for Design indicators
+        if lower_provider == "figma"
+            || lower_title.contains("figma")
+            || lower_title.contains("wireframe")
+            || lower_title.contains("mockup")
+            || lower_title.contains("ui spec")
+        {
+            aspects.insert(DomainAspect::Design);
+        }
+
+        // Check for Data / Spreadsheet indicators
+        if lower_provider == "spreadsheet"
+            || lower_title.contains("dashboard")
+            || lower_title.contains("analytics")
+            || lower_title.contains("metrics")
+        {
+            aspects.insert(DomainAspect::MetricsData);
+        }
+
+        // If Collaboration, Architecture, Design, or Documentation aspects are present,
+        // prune generic TaskTracking / CodeImplementation defaults unless explicitly code-tagged
+        if (aspects.contains(&DomainAspect::Collaboration)
+            || aspects.contains(&DomainAspect::Architecture)
+            || aspects.contains(&DomainAspect::Design)
+            || aspects.contains(&DomainAspect::Documentation)
+            || aspects.contains(&DomainAspect::MetricsData))
+            && !self.tags.iter().any(|t| {
+                let lt = t.to_lowercase();
+                lt.contains("code") || lt.contains("pr") || lt.contains("commit") || lt.contains("bug")
+            })
+        {
+            aspects.remove(&DomainAspect::TaskTracking);
+            aspects.remove(&DomainAspect::CodeImplementation);
+        }
+
+        // Fallback default
+        if aspects.is_empty() {
+            aspects.insert(DomainAspect::CodeImplementation);
+        }
+
+        aspects
+    }
+}
+
+/// Canonical domain aspects representing different functional dimensions of knowledge
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DomainAspect {
+    CodeImplementation,
+    Architecture,
+    TaskTracking,
+    Design,
+    Documentation,
+    Collaboration,
+    MetricsData,
+}
+
+impl std::fmt::Display for DomainAspect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DomainAspect::CodeImplementation => write!(f, "Code & Implementation"),
+            DomainAspect::Architecture => write!(f, "Architecture & Design Decisions"),
+            DomainAspect::TaskTracking => write!(f, "Tasks & Work Items"),
+            DomainAspect::Design => write!(f, "UI / UX Design"),
+            DomainAspect::Documentation => write!(f, "Documentation & Knowledge Base"),
+            DomainAspect::Collaboration => write!(f, "Team Collaboration & Planning"),
+            DomainAspect::MetricsData => write!(f, "Metrics & Data"),
+        }
+    }
 }
 
 /// Structured metadata for a Pull Request artifact
@@ -231,5 +364,6 @@ pub struct PullRequestMetadata {
     pub author: Option<String>,
     pub provider: String,
 }
+
 
 

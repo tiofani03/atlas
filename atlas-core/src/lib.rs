@@ -2,7 +2,10 @@ pub mod config;
 pub mod connectors;
 pub mod context;
 pub mod domain;
+pub mod health;
 pub mod mcp;
+pub mod progress;
+pub mod resilience;
 pub mod storage;
 pub mod sync;
 
@@ -16,10 +19,13 @@ pub use connectors::{
     spreadsheet::SpreadsheetConnector, Connector, ConnectorInstance,
 };
 pub use context::{
-    AiBriefing, CategoryAvailability, CategoryScore, CompletenessReport, ContextBuilder, ContextOptions, ContextPackage,
-    ContextTelemetry, DependencyEdge, EngineeringReadiness, LabeledArtifact, NextAction, RecommendedItem, SourceInfo,
+    AiBriefing, AiGuidance, CategoryAvailability, CategoryScore, ClassifiedKnowledgeGap, CompletenessReport,
+    ContextBuilder, ContextOptions, ContextPackage, ContextTelemetry, CurrentUnderstanding, DependencyEdge,
+    EngineeringReadiness, EvidenceItem, ImplementationHypothesis, ImplementationRisk, InvestigationStep,
+    KnownFact, LabeledArtifact, Mission, ModuleRating, NextAction, PossibleImplementationAreas,
+    PrioritizedKnowledgeGaps, QueueStep, RecommendedItem, ScopeItem, SourceInfo, StatusCheck,
 };
-pub use domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
+pub use domain::{ArtifactKind, ArtifactRelationship, DomainAspect, KnowledgeArtifact};
 pub use storage::{ArtifactHeader, Storage, StorageStats};
 pub use sync::{SyncEngine, SyncSummary};
 
