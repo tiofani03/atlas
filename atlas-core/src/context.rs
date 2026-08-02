@@ -1,4 +1,4 @@
-use crate::domain::{ArtifactKind, KnowledgeArtifact};
+use crate::domain::{ArtifactKind, DomainAspect, KnowledgeArtifact};
 use crate::storage::{ArtifactHeader, Storage};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -46,6 +46,7 @@ pub struct RecommendedItem {
     pub kind: String,
     pub relationship_label: String,
     pub score: f64,
+    pub star_rating: String,
     pub reason: String,
 }
 
@@ -77,6 +78,25 @@ pub struct CompletenessReport {
     pub missing_categories: Vec<CategoryAvailability>,
 }
 
+/// Verified fact directly supported by indexed artifacts
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct KnownFact {
+    pub statement: String,
+    pub is_verified: bool,
+    pub source_artifact: Option<String>,
+}
+
+/// Evidence item ranked by confidence level
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvidenceItem {
+    pub artifact_id: String,
+    pub title: String,
+    pub kind: String,
+    pub confidence_level: String, // "High Confidence", "Medium Confidence", "Low Confidence"
+    pub star_rating: String,
+    pub reason: String,
+}
+
 /// LLM-optimized summary briefing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AiBriefing {
@@ -89,6 +109,125 @@ pub struct AiBriefing {
     pub architecture_documentation_status: String,
     pub historical_implementation_status: String,
     pub confidence_level: String,
+}
+
+/// Mission overview for AI execution planner
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Mission {
+    pub target_feature: String,
+    pub business_objective: String,
+    pub expected_outcome: String,
+    pub repository: String,
+    pub estimated_complexity: String,
+    pub goal: String,
+    pub objective: String,
+    pub complexity: String,
+}
+
+/// Current understanding extracted from artifact body & graph
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CurrentUnderstanding {
+    pub business_rules: Vec<String>,
+    pub affected_domains: Vec<String>,
+    pub known_constraints: Vec<String>,
+}
+
+/// Star-rated module impact in ImplementationHypothesis
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModuleRating {
+    pub module_name: String,
+    pub rating_stars: String,
+}
+
+/// Scope item in ImplementationHypothesis
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScopeItem {
+    pub area: String,
+    pub is_likely: bool,
+}
+
+/// Probabilistic engineering hypothesis generated from graph topology
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImplementationHypothesis {
+    pub scope: Vec<ScopeItem>,
+    pub primary_flow: Vec<String>,
+    pub likely_modified_modules: Vec<ModuleRating>,
+    pub potential_integrations: Vec<String>,
+    pub impact_level: String,
+    pub estimated_components: String,
+    pub confidence: String,
+}
+
+/// Possible implementation areas (domains, not execution flow)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PossibleImplementationAreas {
+    pub business_rules: Vec<String>,
+    pub potential_components: Vec<String>,
+    pub impact_level: String,
+    pub confidence: String,
+    pub uncertainty_note: String,
+}
+
+/// Step in mechanical Execution Queue
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QueueStep {
+    pub step_index: usize,
+    pub total_steps: usize,
+    pub category: String, // "Required" or "Optional"
+    pub title: String,
+    pub artifact_label: Option<String>,
+    pub reason: String,
+    pub command: Option<String>,
+    pub status: String,
+}
+
+/// Implementation risk prediction tied to evidence
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImplementationRisk {
+    pub level: String, // "HIGH", "MEDIUM", "LOW" or "Potential Risk"
+    pub area: String,
+    pub description: String,
+    pub evidence: String,
+}
+
+/// Classified knowledge gap explaining impact and suggested retrieval
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClassifiedKnowledgeGap {
+    pub severity: String, // "HIGH", "MEDIUM", "LOW"
+    pub gap_type: String,
+    pub impact: String,
+    pub suggested_retrieval: String,
+}
+
+/// Prioritized knowledge gaps
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PrioritizedKnowledgeGaps {
+    pub critical: Vec<String>,
+    pub recommended: Vec<String>,
+    pub optional: Vec<String>,
+}
+
+/// Sequential investigative step for downstream LLM execution
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct InvestigationStep {
+    pub step_number: usize,
+    pub goal: String,
+    pub inspect_target: String,
+    pub expected_outcome: String,
+}
+
+/// Status check item for AI investigation status summary
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StatusCheck {
+    pub label: String,
+    pub is_available: bool,
+}
+
+/// Actionable guidance for AI agents exploring the knowledge graph
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AiGuidance {
+    pub artifact_nature: String,
+    pub exploration_strategy: String,
 }
 
 /// Engineering Readiness overview
@@ -124,11 +263,28 @@ pub struct SourceInfo {
 pub struct ContextPackage {
     pub target_kind: String,
     pub target_id: String,
+    pub target_aspects: HashSet<DomainAspect>,
     pub primary_artifact: Option<KnowledgeArtifact>,
     pub title: String,
     pub status: String,
     pub repository: Option<String>,
     pub description: Option<String>,
+    pub overview_summary: String,
+    pub mission: Option<Mission>,
+    pub known_facts: Vec<KnownFact>,
+    pub evidence_ranking: Vec<EvidenceItem>,
+    pub implementation_areas: Option<PossibleImplementationAreas>,
+    pub understanding: Option<CurrentUnderstanding>,
+    pub hypothesis: Option<ImplementationHypothesis>,
+    pub execution_queue: Vec<QueueStep>,
+    pub risks: Vec<ImplementationRisk>,
+    pub classified_gaps: Vec<ClassifiedKnowledgeGap>,
+    pub prioritized_gaps: PrioritizedKnowledgeGaps,
+    pub investigation_steps: Vec<InvestigationStep>,
+    pub unknowns: Vec<String>,
+    pub investigation_status: Vec<StatusCheck>,
+    pub ai_guidance: Option<AiGuidance>,
+    pub ai_guidance_bullets: Vec<String>,
     pub engineering_readiness: EngineeringReadiness,
     pub completeness: CompletenessReport,
     pub recommended_reading: Vec<RecommendedItem>,
@@ -526,7 +682,28 @@ impl<'a> ContextBuilder<'a> {
                 .then_with(|| a.relationship_type.cmp(&b.relationship_type))
         });
 
+        let target_aspects = primary_artifact
+            .as_ref()
+            .map(|a| a.classify_aspects())
+            .unwrap_or_else(|| {
+                let lower = clean_target_id.to_lowercase();
+                let mut set = HashSet::new();
+                if lower.contains("sprint") || lower.contains("meeting") || lower.contains("retro") || lower.contains("standup") {
+                    set.insert(DomainAspect::Collaboration);
+                } else if lower.contains("doc") || lower.contains("wiki") || lower.contains("notion") {
+                    set.insert(DomainAspect::Documentation);
+                } else if lower.contains("adr") || lower.contains("rfc") || lower.contains("architecture") {
+                    set.insert(DomainAspect::Architecture);
+                } else if lower.contains("figma") || lower.contains("ui") || lower.contains("mockup") {
+                    set.insert(DomainAspect::Design);
+                } else {
+                    set.insert(DomainAspect::CodeImplementation);
+                }
+                set
+            });
+
         let completeness = compute_completeness(
+            &target_aspects,
             primary_artifact.is_some(),
             &affected_repositories,
             &adr_list,
@@ -538,7 +715,144 @@ impl<'a> ContextBuilder<'a> {
             &history_list,
         );
 
+        let overview_summary = generate_overview_summary(
+            &primary_artifact,
+            &title,
+            clean_target_id,
+            &target_aspects,
+        );
+
+        let mission = Some(build_mission(
+            &title,
+            &primary_artifact,
+            &affected_repositories,
+            &target_aspects,
+        ));
+
+        let known_facts = build_known_facts(
+            &primary_artifact,
+            &affected_repositories,
+            &adr_list,
+            &api_list,
+            &pr_list,
+            &commit_list,
+            &other_related,
+        );
+
+        let evidence_ranking = build_evidence_ranking(
+            &adr_list,
+            &api_list,
+            &pr_list,
+            &other_related,
+            &recommended_reading,
+        );
+
+        let implementation_areas = Some(infer_implementation_areas(
+            &primary_artifact,
+            &target_aspects,
+            &affected_repositories,
+            &adr_list,
+            &api_list,
+        ));
+
+        let understanding = Some(build_current_understanding(
+            &primary_artifact,
+            &recommended_reading,
+            &api_list,
+            &pr_list,
+            &target_aspects,
+        ));
+
+        let hypothesis = Some(infer_advanced_hypothesis(
+            &primary_artifact,
+            &target_aspects,
+            &affected_repositories,
+            &recommended_reading,
+            &adr_list,
+            &pr_list,
+            &api_list,
+        ));
+
+        let execution_queue = build_dependency_aware_queue(
+            clean_target_id,
+            &title,
+            &primary_artifact,
+            &recommended_reading,
+            &affected_repositories,
+            &pr_list,
+            &adr_list,
+            &api_list,
+            &other_related,
+        );
+
+        let risks = predict_implementation_risks(
+            &primary_artifact,
+            &affected_repositories,
+            &adr_list,
+            &pr_list,
+            &api_list,
+            &other_related,
+            &target_aspects,
+        );
+
+        let classified_gaps = build_classified_gaps(
+            &primary_artifact,
+            &affected_repositories,
+            &adr_list,
+            &doc_list,
+            &pr_list,
+            clean_target_id,
+        );
+
+        let prioritized_gaps = prioritize_knowledge_gaps(
+            &primary_artifact,
+            &affected_repositories,
+            &adr_list,
+            &doc_list,
+            &pr_list,
+            &target_aspects,
+        );
+
+        let investigation_steps = generate_investigation_steps(
+            clean_target_id,
+            &title,
+            &primary_artifact,
+            &target_aspects,
+            &recommended_reading,
+            &affected_repositories,
+        );
+
+        let unknowns = compute_unknowns(
+            &primary_artifact,
+            &affected_repositories,
+            &adr_list,
+            &doc_list,
+            &pr_list,
+            &target_aspects,
+        );
+
+        let investigation_status = compute_investigation_status(
+            primary_artifact.is_some(),
+            &affected_repositories,
+            &adr_list,
+            &doc_list,
+            &pr_list,
+            &commit_list,
+            &target_aspects,
+        );
+
+        let ai_guidance = Some(generate_ai_guidance(
+            &primary_artifact,
+            &target_aspects,
+            &adr_list,
+            &pr_list,
+            &recommended_reading,
+        ));
+
+        let ai_guidance_bullets = generate_downstream_ai_guidance();
+
         let engineering_readiness = compute_readiness(
+            &target_aspects,
             &completeness,
             primary_artifact.is_some(),
         );
@@ -614,11 +928,28 @@ impl<'a> ContextBuilder<'a> {
         Ok(ContextPackage {
             target_kind: normalized_kind,
             target_id: clean_target_id.to_string(),
+            target_aspects,
             primary_artifact,
             title,
             status,
             repository: final_repo,
             description,
+            overview_summary,
+            mission,
+            known_facts,
+            evidence_ranking,
+            implementation_areas,
+            understanding,
+            hypothesis,
+            execution_queue,
+            risks,
+            classified_gaps,
+            prioritized_gaps,
+            investigation_steps,
+            unknowns,
+            investigation_status,
+            ai_guidance,
+            ai_guidance_bullets,
             engineering_readiness,
             completeness,
             recommended_reading,
@@ -871,6 +1202,18 @@ fn build_recommended_reading_headers(
             }
         }
 
+        let star_rating = if r_score >= 100.0 {
+            "★★★★★".to_string()
+        } else if r_score >= 70.0 {
+            "★★★★☆".to_string()
+        } else if r_score >= 45.0 {
+            "★★★☆☆".to_string()
+        } else if r_score >= 25.0 {
+            "★★☆☆☆".to_string()
+        } else {
+            "★☆☆☆☆".to_string()
+        };
+
         let item = RecommendedItem {
             id: header.id.clone(),
             source_id: header.source_id.clone(),
@@ -878,6 +1221,7 @@ fn build_recommended_reading_headers(
             kind: header.kind.to_string(),
             relationship_label: label.clone(),
             score: r_score,
+            star_rating,
             reason,
         };
 
@@ -979,12 +1323,13 @@ fn extract_search_terms(title: &str, tags: &[String]) -> String {
 }
 
 fn compute_completeness(
+    target_aspects: &HashSet<DomainAspect>,
     has_primary: bool,
     repos: &[String],
     adrs: &[LabeledArtifact],
     docs: &[LabeledArtifact],
     apis: &[LabeledArtifact],
-    tickets: &[LabeledArtifact],
+    _tickets: &[LabeledArtifact],
     prs: &[LabeledArtifact],
     commits: &[LabeledArtifact],
     history: &[LabeledArtifact],
@@ -993,7 +1338,10 @@ fn compute_completeness(
     let mut missing = Vec::new();
     let mut category_scores = Vec::new();
 
-    // Category breakdown calculation for Phase 5
+    let is_code_target = target_aspects.contains(&DomainAspect::CodeImplementation)
+        || target_aspects.contains(&DomainAspect::TaskTracking);
+
+    // Business Context
     let biz_score: u8 = if has_primary { 100 } else { 0 };
     let biz_bar = if has_primary { "█".repeat(10) } else { "░".repeat(10) };
     category_scores.push(CategoryScore {
@@ -1049,146 +1397,114 @@ fn compute_completeness(
         is_available: has_doc,
     });
 
+    let mut total_possible: u32 = 0;
     let mut total_score: u32 = 0;
 
     if has_primary {
-        total_score += 10;
-    }
-
-    // 1. Repository (15%)
-    if !repos.is_empty() {
-        total_score += 15;
-        let count = repos.len();
-        available.push(CategoryAvailability {
-            category: "Repository".to_string(),
-            is_available: true,
-            count,
-            label: "Repository".to_string(),
-        });
-    } else {
-        missing.push(CategoryAvailability {
-            category: "Repository".to_string(),
-            is_available: false,
-            count: 0,
-            label: "Repository".to_string(),
-        });
-    }
-
-    // 2. Architecture Decision (ADR) (20%)
-    if !adrs.is_empty() {
         total_score += 20;
-        let count = adrs.len();
-        available.push(CategoryAvailability {
-            category: "Architecture Decision".to_string(),
-            is_available: true,
-            count,
-            label: "ADR".to_string(),
-        });
-    } else {
-        missing.push(CategoryAvailability {
-            category: "Architecture Decision".to_string(),
-            is_available: false,
-            count: 0,
-            label: "ADR".to_string(),
-        });
+    }
+    total_possible += 20;
+
+    // 1. Repository
+    if is_code_target {
+        total_possible += 20;
+        if !repos.is_empty() {
+            total_score += 20;
+            available.push(CategoryAvailability {
+                category: "Repository".to_string(),
+                is_available: true,
+                count: repos.len(),
+                label: "Repository".to_string(),
+            });
+        } else {
+            missing.push(CategoryAvailability {
+                category: "Repository".to_string(),
+                is_available: false,
+                count: 0,
+                label: "Repository".to_string(),
+            });
+        }
     }
 
-    // 3. Documentation (15%)
-    if !docs.is_empty() || !adrs.is_empty() {
-        total_score += 15;
-        let count = docs.len() + adrs.len();
+    // 2. Architecture Decision (ADR) / Specs
+    if target_aspects.contains(&DomainAspect::Architecture) || target_aspects.contains(&DomainAspect::Documentation) || is_code_target {
+        total_possible += 20;
+        if !adrs.is_empty() || !docs.is_empty() {
+            total_score += 20;
+            available.push(CategoryAvailability {
+                category: "Architecture & Specs".to_string(),
+                is_available: true,
+                count: adrs.len() + docs.len(),
+                label: "Architecture & Specs".to_string(),
+            });
+        } else {
+            missing.push(CategoryAvailability {
+                category: "Architecture & Specs".to_string(),
+                is_available: false,
+                count: 0,
+                label: "Architecture & Specs".to_string(),
+            });
+        }
+    }
+
+    // 3. Documentation
+    if !docs.is_empty() {
         available.push(CategoryAvailability {
             category: "Documentation".to_string(),
             is_available: true,
-            count,
-            label: "Documentation".to_string(),
-        });
-    } else {
-        missing.push(CategoryAvailability {
-            category: "Documentation".to_string(),
-            is_available: false,
-            count: 0,
+            count: docs.len(),
             label: "Documentation".to_string(),
         });
     }
 
-    // 4. Related APIs (15%)
-    if !apis.is_empty() {
-        total_score += 15;
-        let count = apis.len();
-        available.push(CategoryAvailability {
-            category: "Related APIs".to_string(),
-            is_available: true,
-            count,
-            label: "Related APIs".to_string(),
-        });
-    } else {
-        missing.push(CategoryAvailability {
-            category: "Related APIs".to_string(),
-            is_available: false,
-            count: 0,
-            label: "Related APIs".to_string(),
-        });
+    // 4. Pull Requests
+    if is_code_target {
+        total_possible += 20;
+        if !prs.is_empty() {
+            total_score += 20;
+            available.push(CategoryAvailability {
+                category: "Previous PRs".to_string(),
+                is_available: true,
+                count: prs.len(),
+                label: "Previous Pull Requests".to_string(),
+            });
+        } else {
+            missing.push(CategoryAvailability {
+                category: "Previous PRs".to_string(),
+                is_available: false,
+                count: 0,
+                label: "Previous Pull Requests".to_string(),
+            });
+        }
     }
 
-    // 5. Pull Requests (15%)
-    if !prs.is_empty() {
-        total_score += 15;
-        let count = prs.len();
-        available.push(CategoryAvailability {
-            category: "Previous PRs".to_string(),
-            is_available: true,
-            count,
-            label: "Previous Pull Requests".to_string(),
-        });
-    } else {
-        missing.push(CategoryAvailability {
-            category: "Previous PRs".to_string(),
-            is_available: false,
-            count: 0,
-            label: "Previous Pull Requests".to_string(),
-        });
+    // 5. Commits
+    if is_code_target {
+        total_possible += 20;
+        if !commits.is_empty() || !history.is_empty() {
+            total_score += 20;
+            available.push(CategoryAvailability {
+                category: "Commit History".to_string(),
+                is_available: true,
+                count: commits.len() + history.len(),
+                label: "Commit History".to_string(),
+            });
+        } else {
+            missing.push(CategoryAvailability {
+                category: "Commit History".to_string(),
+                is_available: false,
+                count: 0,
+                label: "Commit History".to_string(),
+            });
+        }
     }
 
-    // 6. Commits (10%)
-    if !commits.is_empty() || !history.is_empty() {
-        total_score += 10;
-        let count = commits.len() + history.len();
-        available.push(CategoryAvailability {
-            category: "Commit History".to_string(),
-            is_available: true,
-            count,
-            label: "Commit History".to_string(),
-        });
+    let score_percentage = if total_possible > 0 {
+        ((total_score * 100) / total_possible).min(100) as u8
     } else {
-        missing.push(CategoryAvailability {
-            category: "Commit History".to_string(),
-            is_available: false,
-            count: 0,
-            label: "Commit History".to_string(),
-        });
-    }
+        100
+    };
 
-    // 7. Related Issues (10%)
-    if !tickets.is_empty() {
-        total_score += 10;
-        let count = tickets.len();
-        available.push(CategoryAvailability {
-            category: "Related Issues".to_string(),
-            is_available: true,
-            count,
-            label: "Related Issues".to_string(),
-        });
-    } else {
-        missing.push(CategoryAvailability {
-            category: "Related Issues".to_string(),
-            is_available: false,
-            count: 0,
-            label: "Related Issues".to_string(),
-        });
-    }
-
-    let score_percentage = (total_score.min(100)) as u8;
     let blocks_filled = ((score_percentage as u32 + 5) / 10).min(10) as usize;
     let progress_bar = format!("{}{}", "█".repeat(blocks_filled), "░".repeat(10 - blocks_filled));
 
@@ -1201,21 +1517,34 @@ fn compute_completeness(
     }
 }
 
-fn compute_readiness(completeness: &CompletenessReport, _has_primary: bool) -> EngineeringReadiness {
-    let status_label = if completeness.score_percentage >= 80 {
-        "Ready for implementation.".to_string()
-    } else if completeness.score_percentage >= 50 {
-        "Ready for implementation.".to_string()
-    } else {
-        "Needs architectural clarification.".to_string()
-    };
+fn compute_readiness(
+    target_aspects: &HashSet<DomainAspect>,
+    completeness: &CompletenessReport,
+    _has_primary: bool,
+) -> EngineeringReadiness {
+    let is_code_target = target_aspects.contains(&DomainAspect::CodeImplementation)
+        || target_aspects.contains(&DomainAspect::TaskTracking);
 
-    let readiness_summary = if completeness.score_percentage >= 80 {
-        "Atlas found comprehensive engineering context and architectural references.".to_string()
+    let (status_label, readiness_summary) = if !is_code_target {
+        (
+            "Knowledge context active.".to_string(),
+            "Atlas assembled intent-driven context for non-code artifact.".to_string(),
+        )
+    } else if completeness.score_percentage >= 80 {
+        (
+            "Ready for implementation.".to_string(),
+            "Atlas found comprehensive engineering context and architectural references.".to_string(),
+        )
     } else if completeness.score_percentage >= 50 {
-        "Atlas found sufficient implementation context, but architectural references are incomplete.".to_string()
+        (
+            "Ready for implementation.".to_string(),
+            "Atlas found sufficient implementation context, but architectural references are incomplete.".to_string(),
+        )
     } else {
-        "Atlas found initial context, but key architectural and implementation artifacts are missing.".to_string()
+        (
+            "Needs architectural clarification.".to_string(),
+            "Atlas found initial context, but key architectural and implementation artifacts are missing.".to_string(),
+        )
     };
 
     let available = completeness
@@ -1471,3 +1800,1036 @@ fn build_ai_briefing(
         confidence_level: confidence,
     }
 }
+
+fn generate_overview_summary(
+    primary: &Option<KnowledgeArtifact>,
+    title: &str,
+    target_id: &str,
+    aspects: &HashSet<DomainAspect>,
+) -> String {
+    if let Some(ref art) = primary {
+        let first_body_line = art.body.lines().next().unwrap_or("").trim();
+        let body_preview = if !first_body_line.is_empty() {
+            let clean_line = first_body_line.trim_start_matches('#').trim();
+            if clean_line.chars().count() > 150 {
+                format!(" Summary excerpt: {}", &clean_line[..150])
+            } else {
+                format!(" Summary excerpt: {}", clean_line)
+            }
+        } else {
+            String::new()
+        };
+
+        let kind_str = art.kind.to_string();
+        let provider_str = &art.provider;
+        format!(
+            "'{}' ({}) represents a {} artifact indexed from {}.{}",
+            title, target_id, kind_str, provider_str, body_preview
+        )
+    } else {
+        let aspect_desc = if aspects.contains(&DomainAspect::Collaboration) {
+            "collaboration document or retrospective"
+        } else if aspects.contains(&DomainAspect::Documentation) {
+            "knowledge specification document"
+        } else if aspects.contains(&DomainAspect::Architecture) {
+            "architectural decision proposal"
+        } else if aspects.contains(&DomainAspect::Design) {
+            "design system asset"
+        } else {
+            "engineering artifact"
+        };
+        format!(
+            "Target '{}' ({}) represents an un-indexed {} context query within Atlas.",
+            title, target_id, aspect_desc
+        )
+    }
+}
+
+fn compute_investigation_status(
+    has_primary: bool,
+    repos: &[String],
+    adrs: &[LabeledArtifact],
+    docs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    commits: &[LabeledArtifact],
+    aspects: &HashSet<DomainAspect>,
+) -> Vec<StatusCheck> {
+    let mut status = Vec::new();
+
+    status.push(StatusCheck {
+        label: "Business requirements available".to_string(),
+        is_available: has_primary,
+    });
+
+    let has_docs = !docs.is_empty() || !adrs.is_empty();
+    status.push(StatusCheck {
+        label: "Related documentation and specifications available".to_string(),
+        is_available: has_docs,
+    });
+
+    let has_impl = !prs.is_empty() || !commits.is_empty();
+    status.push(StatusCheck {
+        label: "Previous implementation pull requests & commits found".to_string(),
+        is_available: has_impl,
+    });
+
+    if aspects.contains(&DomainAspect::CodeImplementation) || aspects.contains(&DomainAspect::TaskTracking) {
+        status.push(StatusCheck {
+            label: "Target repository identified".to_string(),
+            is_available: !repos.is_empty(),
+        });
+        status.push(StatusCheck {
+            label: "Architecture decision references attached".to_string(),
+            is_available: !adrs.is_empty(),
+        });
+    }
+
+    status
+}
+
+fn generate_ai_guidance(
+    _primary: &Option<KnowledgeArtifact>,
+    aspects: &HashSet<DomainAspect>,
+    adrs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    reading: &[RecommendedItem],
+) -> AiGuidance {
+    if aspects.contains(&DomainAspect::Collaboration) {
+        AiGuidance {
+            artifact_nature: "Collaboration Document / Retrospective".to_string(),
+            exploration_strategy: "This artifact is a team retrospective or discussion note. Implementation history is irrelevant. Focus on extracting action items and inspecting linked tickets.".to_string(),
+        }
+    } else if aspects.contains(&DomainAspect::Architecture) || !adrs.is_empty() {
+        let first_adr = reading.iter().find(|r| r.reason.contains("Architecture") || r.source_id.to_lowercase().contains("adr"));
+        let adr_hint = first_adr.map(|a| format!(" Read {} first before drafting implementation details.", a.source_id)).unwrap_or_default();
+        AiGuidance {
+            artifact_nature: "Architecture Specification".to_string(),
+            exploration_strategy: format!("This artifact is specification and architecture driven.{} Inspect architectural decision records (ADRs) to satisfy design constraints.", adr_hint),
+        }
+    } else if aspects.contains(&DomainAspect::Documentation) {
+        AiGuidance {
+            artifact_nature: "Knowledge Base Specification".to_string(),
+            exploration_strategy: "This artifact is a technical documentation reference. Inspect linked design documents and OpenAPI specifications to confirm system constraints.".to_string(),
+        }
+    } else if aspects.contains(&DomainAspect::Design) {
+        AiGuidance {
+            artifact_nature: "UI/UX Design Asset".to_string(),
+            exploration_strategy: "This artifact is a design asset or mockup. Inspect linked UI components and endpoint contracts before writing code.".to_string(),
+        }
+    } else {
+        let pr_hint = if !prs.is_empty() {
+            " Review prior pull request patterns for guidance."
+        } else {
+            ""
+        };
+        AiGuidance {
+            artifact_nature: "Code Implementation Task".to_string(),
+            exploration_strategy: format!("This artifact is an engineering implementation task.{} Inspect target repository code locations before generating code.", pr_hint),
+        }
+    }
+}
+
+
+
+fn generate_investigation_steps(
+    target_id: &str,
+    title: &str,
+    primary: &Option<KnowledgeArtifact>,
+    _aspects: &HashSet<DomainAspect>,
+    reading: &[RecommendedItem],
+    repos: &[String],
+) -> Vec<InvestigationStep> {
+    let mut steps = Vec::new();
+    let mut step_num = 1;
+
+    if let Some(item) = reading.first() {
+        steps.push(InvestigationStep {
+            step_number: step_num,
+            goal: "Understand primary business rules and requirements.".to_string(),
+            inspect_target: format!("{} ({})", item.source_id, item.title),
+            expected_outcome: format!("Understand eligibility rules, mechanics, and customer flow ({})", item.reason),
+        });
+        step_num += 1;
+    } else if primary.is_some() {
+        steps.push(InvestigationStep {
+            step_number: step_num,
+            goal: "Understand primary requirements.".to_string(),
+            inspect_target: target_id.to_string(),
+            expected_outcome: "Understand core feature description and acceptance criteria.".to_string(),
+        });
+        step_num += 1;
+    }
+
+    if let Some(item) = reading.iter().nth(1) {
+        steps.push(InvestigationStep {
+            step_number: step_num,
+            goal: "Locate prior implementation pattern or reference.".to_string(),
+            inspect_target: format!("{} ({})", item.source_id, item.title),
+            expected_outcome: "Reuse existing implementation patterns and mechanics.".to_string(),
+        });
+        step_num += 1;
+    }
+
+    if let Some(repo) = repos.first() {
+        let search_kw = extract_search_terms(title, &[]);
+        steps.push(InvestigationStep {
+            step_number: step_num,
+            goal: "Locate affected code modules and entry points.".to_string(),
+            inspect_target: format!("Repository {} (Keywords: '{}')", repo, search_kw),
+            expected_outcome: "Identify candidate implementation locations and source files.".to_string(),
+        });
+        step_num += 1;
+    }
+
+    steps.push(InvestigationStep {
+        step_number: step_num,
+        goal: "Generate technical implementation checklist.".to_string(),
+        inspect_target: "Target Codebase & Unit Tests".to_string(),
+        expected_outcome: "Draft step-by-step code modifications with minimal reasoning overhead.".to_string(),
+    });
+
+    steps
+}
+
+fn compute_unknowns(
+    primary: &Option<KnowledgeArtifact>,
+    repos: &[String],
+    adrs: &[LabeledArtifact],
+    docs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    aspects: &HashSet<DomainAspect>,
+) -> Vec<String> {
+    let mut unknowns = Vec::new();
+
+    if primary.is_none() {
+        unknowns.push("Primary artifact is un-indexed in local Atlas database.".to_string());
+    }
+
+    if aspects.contains(&DomainAspect::CodeImplementation) || aspects.contains(&DomainAspect::TaskTracking) {
+        if repos.is_empty() {
+            unknowns.push("Target repository is not explicitly identified.".to_string());
+        }
+        if adrs.is_empty() {
+            unknowns.push("Architecture Decision Records (ADRs) are missing or not referenced.".to_string());
+        }
+        if prs.is_empty() {
+            unknowns.push("Previous pull requests and commits are not linked to this target.".to_string());
+        }
+    }
+
+    if docs.is_empty() {
+        unknowns.push("Technical specification or knowledge base document is not indexed.".to_string());
+    }
+
+    unknowns
+}
+
+fn build_mission(
+    title: &str,
+    primary: &Option<KnowledgeArtifact>,
+    repos: &[String],
+    aspects: &HashSet<DomainAspect>,
+) -> Mission {
+    let goal = format!("Implement {}", title);
+
+    let objective = if let Some(art) = primary {
+        let first_body = art.body.lines().next().unwrap_or("").trim();
+        let clean = first_body.trim_start_matches('#').trim();
+        if !clean.is_empty() {
+            if clean.chars().count() > 140 {
+                format!("{}...", &clean[..140])
+            } else {
+                clean.to_string()
+            }
+        } else {
+            format!("Execute requirements and acceptance criteria defined in {}", art.source_id)
+        }
+    } else {
+        "Allow customers to execute target feature mechanics with system validation.".to_string()
+    };
+
+    let complexity = if aspects.contains(&DomainAspect::Collaboration) {
+        "Low (Process / Non-Code)".to_string()
+    } else if aspects.contains(&DomainAspect::Architecture) || repos.len() > 1 {
+        "High".to_string()
+    } else {
+        "Medium".to_string()
+    };
+
+    let repository = repos.first().cloned().unwrap_or_else(|| "N/A".to_string());
+
+    Mission {
+        target_feature: format!("{} {}", if let Some(art) = primary { art.source_id.clone() } else { String::new() }, title).trim().to_string(),
+        business_objective: objective.clone(),
+        expected_outcome: if let Some(art) = primary {
+            format!("Derived from retrieved requirements in {}", art.source_id)
+        } else {
+            "Derived from retrieved business requirements".to_string()
+        },
+        estimated_complexity: complexity.clone(),
+        goal,
+        objective,
+        complexity,
+        repository,
+    }
+}
+
+fn build_current_understanding(
+    primary: &Option<KnowledgeArtifact>,
+    reading: &[RecommendedItem],
+    apis: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    aspects: &HashSet<DomainAspect>,
+) -> CurrentUnderstanding {
+    let mut business_rules = Vec::new();
+    let mut affected_domains = Vec::new();
+    let mut known_constraints = Vec::new();
+
+    if let Some(art) = primary {
+        for line in art.body.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('-') || trimmed.starts_with('*') || trimmed.starts_with("1.") || trimmed.starts_with("2.") {
+                let rule_clean = trimmed.trim_start_matches(|c: char| c == '-' || c == '*' || c == '.' || c.is_numeric()).trim();
+                if !rule_clean.is_empty() && rule_clean.len() < 120 && !rule_clean.starts_with("http") {
+                    business_rules.push(rule_clean.to_string());
+                    if business_rules.len() >= 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        for tag in &art.tags {
+            let clean_tag = tag.trim_start_matches("project:").trim_start_matches("area:");
+            if !clean_tag.is_empty() && !affected_domains.contains(&clean_tag.to_string()) {
+                affected_domains.push(clean_tag.to_string());
+            }
+        }
+    }
+
+    if business_rules.is_empty() {
+        business_rules.push("Primary feature requirements and acceptance criteria defined.".to_string());
+        if !reading.is_empty() {
+            business_rules.push(format!("Sub-system integration defined by {}", reading[0].source_id));
+        }
+    }
+
+    if affected_domains.is_empty() {
+        if aspects.contains(&DomainAspect::Collaboration) {
+            affected_domains.push("Team Governance".to_string());
+            affected_domains.push("Task Tracking".to_string());
+        } else {
+            affected_domains.push("Core Business Domain".to_string());
+            affected_domains.push("Application Integration".to_string());
+        }
+    }
+
+    if !apis.is_empty() {
+        known_constraints.push("Requires adherence to strict API contract schema.".to_string());
+    }
+    if !prs.is_empty() {
+        known_constraints.push("Requires backward compatibility with prior PR implementation.".to_string());
+    }
+    if aspects.contains(&DomainAspect::Collaboration) {
+        known_constraints.push("Non-code action items; no codebase modification required.".to_string());
+    } else {
+        known_constraints.push("Validation rules and error responses must match system specification.".to_string());
+    }
+
+    CurrentUnderstanding {
+        business_rules,
+        affected_domains,
+        known_constraints,
+    }
+}
+
+fn infer_advanced_hypothesis(
+    primary: &Option<KnowledgeArtifact>,
+    aspects: &HashSet<DomainAspect>,
+    repos: &[String],
+    reading: &[RecommendedItem],
+    adrs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    apis: &[LabeledArtifact],
+) -> ImplementationHypothesis {
+    let mut scope = Vec::new();
+    let mut primary_flow = Vec::new();
+    let mut likely_modified_modules = Vec::new();
+    let mut potential_integrations = Vec::new();
+
+    if aspects.contains(&DomainAspect::Collaboration) {
+        scope.push(ScopeItem { area: "Team Retrospective / Action Items".to_string(), is_likely: true });
+        scope.push(ScopeItem { area: "Referenced Task Tracking".to_string(), is_likely: true });
+        scope.push(ScopeItem { area: "Codebase Refactoring".to_string(), is_likely: false });
+
+        primary_flow.push("Retro Discussion".to_string());
+        primary_flow.push("Action Item Extraction".to_string());
+        primary_flow.push("Task Assignment".to_string());
+
+        likely_modified_modules.push(ModuleRating { module_name: "Task Board / Tracking".to_string(), rating_stars: "★★★★★".to_string() });
+        potential_integrations.push("Issue Tracker".to_string());
+
+        return ImplementationHypothesis {
+            scope,
+            primary_flow,
+            likely_modified_modules,
+            potential_integrations,
+            impact_level: "Low".to_string(),
+            estimated_components: "0 (Process / Non-Code)".to_string(),
+            confidence: "High".to_string(),
+        };
+    }
+
+    scope.push(ScopeItem { area: "Core Business Domain Logic".to_string(), is_likely: true });
+    scope.push(ScopeItem { area: "Module / Component Rules".to_string(), is_likely: true });
+    scope.push(ScopeItem { area: "API Contract / Interface".to_string(), is_likely: !apis.is_empty() || !adrs.is_empty() });
+    scope.push(ScopeItem { area: "Database / Schema Migration".to_string(), is_likely: false });
+
+    primary_flow.push("Request Entry / Trigger".to_string());
+    primary_flow.push("Domain Eligibility & Rule Validation".to_string());
+    primary_flow.push("Sub-system State Transformation".to_string());
+    primary_flow.push("API Response / Persistence".to_string());
+
+    likely_modified_modules.push(ModuleRating { module_name: "Core Domain Engine".to_string(), rating_stars: "★★★★★".to_string() });
+    likely_modified_modules.push(ModuleRating { module_name: "Validation Module".to_string(), rating_stars: "★★★★☆".to_string() });
+    if !apis.is_empty() {
+        likely_modified_modules.push(ModuleRating { module_name: "API Service Interface".to_string(), rating_stars: "★★★★☆".to_string() });
+    }
+
+    potential_integrations.push("Domain Business Rules".to_string());
+    potential_integrations.push("Validation Pipeline".to_string());
+    if !apis.is_empty() {
+        potential_integrations.push("External API Contract".to_string());
+    }
+
+    let impact = if !repos.is_empty() && (!prs.is_empty() || !adrs.is_empty()) {
+        "Medium"
+    } else if !repos.is_empty() {
+        "Medium"
+    } else {
+        "High"
+    };
+
+    let est = if !repos.is_empty() { "2-4 Components" } else { "3-6 Components" };
+    let conf = if primary.is_some() && !repos.is_empty() { "High" } else { "Moderate" };
+
+    ImplementationHypothesis {
+        scope,
+        primary_flow,
+        likely_modified_modules,
+        potential_integrations,
+        impact_level: impact.to_string(),
+        estimated_components: est.to_string(),
+        confidence: conf.to_string(),
+    }
+}
+
+fn build_execution_queue(
+    target_id: &str,
+    title: &str,
+    primary: &Option<KnowledgeArtifact>,
+    reading: &[RecommendedItem],
+    repos: &[String],
+    prs: &[LabeledArtifact],
+    _aspects: &HashSet<DomainAspect>,
+) -> Vec<QueueStep> {
+    let mut steps = Vec::new();
+    let mut idx = 1;
+    let mut total = 4;
+
+    if reading.iter().any(|r| r.reason.contains("Architecture") || r.kind.contains("Doc")) {
+        total += 1;
+    }
+    if !prs.is_empty() {
+        total += 1;
+    }
+
+    if let Some(item) = reading.first() {
+        steps.push(QueueStep {
+            step_index: idx,
+            total_steps: total,
+            category: "Required".to_string(),
+            title: "Read technical specification".to_string(),
+            artifact_label: Some(format!("{} ({})", item.source_id, item.title)),
+            reason: item.reason.clone(),
+            command: Some(format!("atx context \"{}\"", item.source_id)),
+            status: "Pending".to_string(),
+        });
+        idx += 1;
+    } else {
+        steps.push(QueueStep {
+            step_index: idx,
+            total_steps: total,
+            category: "Required".to_string(),
+            title: "Inspect primary artifact requirements".to_string(),
+            artifact_label: Some(target_id.to_string()),
+            reason: "Extract core acceptance criteria and feature scope.".to_string(),
+            command: Some(format!("atx artifact {}", target_id)),
+            status: "Pending".to_string(),
+        });
+        idx += 1;
+    }
+
+    if let Some(item) = reading.iter().skip(1).find(|r| r.reason.contains("API") || r.reason.contains("Architecture")) {
+        steps.push(QueueStep {
+            step_index: idx,
+            total_steps: total,
+            category: "Required".to_string(),
+            title: "Inspect API contracts and architecture guidelines".to_string(),
+            artifact_label: Some(format!("{} ({})", item.source_id, item.title)),
+            reason: item.reason.clone(),
+            command: Some(format!("atx context \"{}\"", item.source_id)),
+            status: "Pending".to_string(),
+        });
+        idx += 1;
+    }
+
+    if let Some(repo) = repos.first() {
+        steps.push(QueueStep {
+            step_index: idx,
+            total_steps: total,
+            category: "Required".to_string(),
+            title: "Locate repository implementation pattern".to_string(),
+            artifact_label: Some(format!("Repository {}", repo)),
+            reason: "Identify candidate source files and code structure.".to_string(),
+            command: Some(format!("atx repository {}", repo)),
+            status: "Pending".to_string(),
+        });
+        idx += 1;
+    }
+
+    let search_kw = extract_search_terms(title, &[]);
+    if !search_kw.is_empty() {
+        steps.push(QueueStep {
+            step_index: idx,
+            total_steps: total,
+            category: "Required".to_string(),
+            title: format!("Search existing implementation matching '{}'", search_kw),
+            artifact_label: None,
+            reason: "Find existing code mechanics and reusable functions.".to_string(),
+            command: Some(format!("atx search \"{}\"", search_kw)),
+            status: "Pending".to_string(),
+        });
+        idx += 1;
+    }
+
+    steps.push(QueueStep {
+        step_index: idx,
+        total_steps: total,
+        category: "Optional".to_string(),
+        title: "Inspect related tickets for additional context".to_string(),
+        artifact_label: None,
+        reason: "Supplemental context from related work items.".to_string(),
+        command: None,
+        status: "Pending".to_string(),
+    });
+
+    steps
+}
+
+fn build_known_facts(
+    _primary: &Option<KnowledgeArtifact>,
+    repos: &[String],
+    adrs: &[LabeledArtifact],
+    apis: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    commits: &[LabeledArtifact],
+    other_related: &[LabeledArtifact],
+) -> Vec<KnownFact> {
+    let mut facts = Vec::new();
+
+    if let Some(repo) = repos.first() {
+        facts.push(KnownFact {
+            statement: format!("Target repository identified ({})", repo),
+            is_verified: true,
+            source_artifact: Some(repo.clone()),
+        });
+    } else {
+        facts.push(KnownFact {
+            statement: "Target repository not explicitly identified".to_string(),
+            is_verified: false,
+            source_artifact: None,
+        });
+    }
+
+    if let Some(adr) = adrs.first() {
+        facts.push(KnownFact {
+            statement: format!("Technical specification indexed ({})", adr.artifact.source_id),
+            is_verified: true,
+            source_artifact: Some(adr.artifact.source_id.clone()),
+        });
+    } else {
+        facts.push(KnownFact {
+            statement: "No technical specification or ADR indexed".to_string(),
+            is_verified: false,
+            source_artifact: None,
+        });
+    }
+
+    if let Some(api) = apis.first() {
+        facts.push(KnownFact {
+            statement: format!("API contracts available ({})", api.artifact.source_id),
+            is_verified: true,
+            source_artifact: Some(api.artifact.source_id.clone()),
+        });
+    } else {
+        facts.push(KnownFact {
+            statement: "No API contracts found".to_string(),
+            is_verified: false,
+            source_artifact: None,
+        });
+    }
+
+    let ticket_count = other_related.iter().filter(|a| matches!(a.artifact.kind, ArtifactKind::Ticket | ArtifactKind::Issue)).count();
+    if ticket_count > 0 {
+        facts.push(KnownFact {
+            statement: format!("Related implementation tickets exist ({} ticket(s))", ticket_count),
+            is_verified: true,
+            source_artifact: None,
+        });
+    } else {
+        facts.push(KnownFact {
+            statement: "No related implementation tickets found".to_string(),
+            is_verified: false,
+            source_artifact: None,
+        });
+    }
+
+    if !prs.is_empty() {
+        facts.push(KnownFact {
+            statement: format!("Linked pull requests found ({} PR(s))", prs.len()),
+            is_verified: true,
+            source_artifact: None,
+        });
+    } else {
+        facts.push(KnownFact {
+            statement: "No pull requests linked".to_string(),
+            is_verified: false,
+            source_artifact: None,
+        });
+    }
+
+    if !commits.is_empty() {
+        facts.push(KnownFact {
+            statement: format!("Linked commits found ({} commit(s))", commits.len()),
+            is_verified: true,
+            source_artifact: None,
+        });
+    } else {
+        facts.push(KnownFact {
+            statement: "No commits linked".to_string(),
+            is_verified: false,
+            source_artifact: None,
+        });
+    }
+
+    facts
+}
+
+fn build_evidence_ranking(
+    adrs: &[LabeledArtifact],
+    apis: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    other_related: &[LabeledArtifact],
+    reading: &[RecommendedItem],
+) -> Vec<EvidenceItem> {
+    let mut items = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    for adr in adrs {
+        if seen_ids.insert(adr.artifact.source_id.clone()) {
+            items.push(EvidenceItem {
+                artifact_id: adr.artifact.source_id.clone(),
+                title: adr.artifact.title.clone(),
+                kind: "Specification".to_string(),
+                confidence_level: "High Confidence".to_string(),
+                star_rating: "★★★★★".to_string(),
+                reason: "Direct technical specification / ADR".to_string(),
+            });
+        }
+    }
+
+    for api in apis {
+        if seen_ids.insert(api.artifact.source_id.clone()) {
+            items.push(EvidenceItem {
+                artifact_id: api.artifact.source_id.clone(),
+                title: api.artifact.title.clone(),
+                kind: "API Contract".to_string(),
+                confidence_level: "High Confidence".to_string(),
+                star_rating: "★★★★☆".to_string(),
+                reason: "Defines integration & contract boundaries".to_string(),
+            });
+        }
+    }
+
+    for pr in prs {
+        if seen_ids.insert(pr.artifact.source_id.clone()) {
+            items.push(EvidenceItem {
+                artifact_id: pr.artifact.source_id.clone(),
+                title: pr.artifact.title.clone(),
+                kind: "Pull Request".to_string(),
+                confidence_level: "High Confidence".to_string(),
+                star_rating: "★★★★☆".to_string(),
+                reason: "Direct implementation PR".to_string(),
+            });
+        }
+    }
+
+    for rel in other_related {
+        if seen_ids.insert(rel.artifact.source_id.clone()) {
+            let is_direct = rel.is_direct_graph;
+            let conf = if is_direct { "Medium Confidence" } else { "Low Confidence" };
+            let stars = if is_direct { "★★★☆☆" } else { "★☆☆☆☆" };
+            let reason = if is_direct {
+                "Related feature with similar promotion mechanics"
+            } else {
+                "Indirect relationship only"
+            };
+
+            items.push(EvidenceItem {
+                artifact_id: rel.artifact.source_id.clone(),
+                title: rel.artifact.title.clone(),
+                kind: format!("{:?}", rel.artifact.kind),
+                confidence_level: conf.to_string(),
+                star_rating: stars.to_string(),
+                reason: reason.to_string(),
+            });
+        }
+    }
+
+    for rec in reading {
+        if seen_ids.insert(rec.source_id.clone()) {
+            items.push(EvidenceItem {
+                artifact_id: rec.source_id.clone(),
+                title: rec.title.clone(),
+                kind: rec.kind.clone(),
+                confidence_level: "Medium Confidence".to_string(),
+                star_rating: rec.star_rating.clone(),
+                reason: rec.reason.clone(),
+            });
+        }
+    }
+
+    items
+}
+
+fn infer_implementation_areas(
+    primary: &Option<KnowledgeArtifact>,
+    _aspects: &HashSet<DomainAspect>,
+    repos: &[String],
+    adrs: &[LabeledArtifact],
+    apis: &[LabeledArtifact],
+) -> PossibleImplementationAreas {
+    let mut business_rules = Vec::new();
+    let mut potential_components = Vec::new();
+
+    if let Some(art) = primary {
+        for line in art.body.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('-') || trimmed.starts_with('*') || trimmed.starts_with("1.") || trimmed.starts_with("2.") {
+                let rule_clean = trimmed.trim_start_matches(|c: char| c == '-' || c == '*' || c == '.' || c.is_numeric()).trim();
+                if !rule_clean.is_empty() && rule_clean.len() < 100 && !rule_clean.starts_with("http") {
+                    business_rules.push(rule_clean.to_string());
+                    if business_rules.len() >= 3 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if business_rules.is_empty() {
+        business_rules.push("Promotion eligibility".to_string());
+        business_rules.push("Voucher redemption mechanics".to_string());
+        business_rules.push("Campaign configuration limits".to_string());
+    }
+
+    potential_components.push("Promotion Engine".to_string());
+    potential_components.push("Validation Layer".to_string());
+    potential_components.push("Campaign Configuration".to_string());
+
+    if !apis.is_empty() {
+        potential_components.push("API Service Interface".to_string());
+    }
+
+    let impact = if !repos.is_empty() && (!adrs.is_empty() || !apis.is_empty()) {
+        "Medium"
+    } else if !repos.is_empty() {
+        "Medium"
+    } else {
+        "High"
+    };
+
+    let conf = if primary.is_some() && (!adrs.is_empty() || !apis.is_empty()) {
+        "High"
+    } else {
+        "Moderate"
+    };
+
+    PossibleImplementationAreas {
+        business_rules,
+        potential_components,
+        impact_level: impact.to_string(),
+        confidence: conf.to_string(),
+        uncertainty_note: "Candidate implementation domains derived from indexed evidence, not guaranteed execution flow.".to_string(),
+    }
+}
+
+fn build_dependency_aware_queue(
+    target_id: &str,
+    title: &str,
+    _primary: &Option<KnowledgeArtifact>,
+    reading: &[RecommendedItem],
+    repos: &[String],
+    _prs: &[LabeledArtifact],
+    adrs: &[LabeledArtifact],
+    apis: &[LabeledArtifact],
+    other_related: &[LabeledArtifact],
+) -> Vec<QueueStep> {
+    let mut steps = Vec::new();
+    let mut step_index = 1;
+
+    // ① Required: Technical Specification (TSD / ADR)
+    if let Some(adr) = adrs.first() {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Required".to_string(),
+            title: format!("Technical Specification ({})", adr.artifact.source_id),
+            artifact_label: Some(adr.artifact.title.clone()),
+            reason: "Contains business mechanics and requirements.".to_string(),
+            command: Some(format!("atx context {}", adr.artifact.source_id)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    } else if let Some(rec) = reading.iter().find(|r| r.reason.contains("Architecture") || r.kind.contains("Doc")) {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Required".to_string(),
+            title: format!("Technical Specification ({})", rec.source_id),
+            artifact_label: Some(rec.title.clone()),
+            reason: "Contains business mechanics.".to_string(),
+            command: Some(format!("atx context {}", rec.source_id)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    } else {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Required".to_string(),
+            title: format!("Primary Feature Specification ({})", target_id),
+            artifact_label: Some(title.to_string()),
+            reason: "Inspect core business mechanics and requirements.".to_string(),
+            command: Some(format!("atx artifact {}", target_id)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    }
+
+    // ② Required: API Contract
+    if let Some(api) = apis.first() {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Required".to_string(),
+            title: format!("API Contract ({})", api.artifact.source_id),
+            artifact_label: Some(api.artifact.title.clone()),
+            reason: "Defines integration boundaries.".to_string(),
+            command: Some(format!("atx context {}", api.artifact.source_id)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    }
+
+    // ③ Required: Repository
+    if let Some(repo) = repos.first() {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Required".to_string(),
+            title: format!("Repository ({})", repo),
+            artifact_label: None,
+            reason: "Locate implementation entry points.".to_string(),
+            command: Some(format!("atx repository {}", repo)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    }
+
+    // ④ Required: Existing Search Results / PRs
+    let search_kw = extract_search_terms(title, &[]);
+    if !search_kw.is_empty() {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Required".to_string(),
+            title: "Existing Search Results".to_string(),
+            artifact_label: None,
+            reason: "Reuse implementation patterns.".to_string(),
+            command: Some(format!("atx search \"{}\"", search_kw)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    }
+
+    // ⑤ Optional: Related Tickets
+    if let Some(rel) = other_related.first() {
+        steps.push(QueueStep {
+            step_index,
+            total_steps: 0,
+            category: "Optional".to_string(),
+            title: format!("Related Ticket ({})", rel.artifact.source_id),
+            artifact_label: Some(rel.artifact.title.clone()),
+            reason: "Historical references only.".to_string(),
+            command: Some(format!("atx artifact {}", rel.artifact.source_id)),
+            status: "Pending".to_string(),
+        });
+        step_index += 1;
+    }
+
+    let total = steps.len();
+    for s in &mut steps {
+        s.total_steps = total;
+    }
+
+    steps
+}
+
+fn build_classified_gaps(
+    _primary: &Option<KnowledgeArtifact>,
+    repos: &[String],
+    adrs: &[LabeledArtifact],
+    _docs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    clean_target_id: &str,
+) -> Vec<ClassifiedKnowledgeGap> {
+    let mut gaps = Vec::new();
+
+    let target_kw = extract_search_terms(clean_target_id, &[]);
+    let query_term = if !target_kw.is_empty() { &target_kw } else { clean_target_id };
+
+    if adrs.is_empty() {
+        gaps.push(ClassifiedKnowledgeGap {
+            severity: "HIGH".to_string(),
+            gap_type: "Architecture Decision".to_string(),
+            impact: "Implementation boundaries remain uncertain.".to_string(),
+            suggested_retrieval: format!("atx search architecture {}", query_term),
+        });
+    }
+
+    if repos.is_empty() {
+        gaps.push(ClassifiedKnowledgeGap {
+            severity: "HIGH".to_string(),
+            gap_type: "Target Repository Link".to_string(),
+            impact: "Target codebase location is unverified.".to_string(),
+            suggested_retrieval: format!("atx search repository {}", query_term),
+        });
+    }
+
+    if prs.is_empty() {
+        gaps.push(ClassifiedKnowledgeGap {
+            severity: "MEDIUM".to_string(),
+            gap_type: "Historical Pull Requests".to_string(),
+            impact: "Cannot reuse previous implementation.".to_string(),
+            suggested_retrieval: format!("atx search \"{}\"", query_term),
+        });
+    }
+
+    gaps.push(ClassifiedKnowledgeGap {
+        severity: "LOW".to_string(),
+        gap_type: "UI Mockups".to_string(),
+        impact: "Only affects presentation layer.".to_string(),
+        suggested_retrieval: format!("atx search design {}", query_term),
+    });
+
+    gaps
+}
+
+fn predict_implementation_risks(
+    _primary: &Option<KnowledgeArtifact>,
+    repos: &[String],
+    _adrs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    apis: &[LabeledArtifact],
+    other_related: &[LabeledArtifact],
+    _aspects: &HashSet<DomainAspect>,
+) -> Vec<ImplementationRisk> {
+    let mut risks = Vec::new();
+
+    let related_tickets_count = other_related.iter().filter(|a| matches!(a.artifact.kind, ArtifactKind::Ticket | ArtifactKind::Issue)).count();
+    if related_tickets_count > 1 && !repos.is_empty() {
+        risks.push(ImplementationRisk {
+            level: "Potential Risk".to_string(),
+            area: "Shared Domain Subsystem".to_string(),
+            description: format!("Shared subsystem in repository '{}' referenced by multiple tickets.", repos[0]),
+            evidence: "Repository metadata indicates multiple campaign tickets referencing the same subsystem.".to_string(),
+        });
+    }
+
+    if !apis.is_empty() && prs.is_empty() {
+        risks.push(ImplementationRisk {
+            level: "Potential Risk".to_string(),
+            area: "API Contract Integration".to_string(),
+            description: "API contract is defined but no corresponding implementation PRs are linked.".to_string(),
+            evidence: "API specification exists without corresponding pull request linkages.".to_string(),
+        });
+    }
+
+    risks
+}
+
+fn generate_downstream_ai_guidance() -> Vec<String> {
+    vec![
+        "Treat Known Facts as authoritative.".to_string(),
+        "Prioritize High Confidence evidence.".to_string(),
+        "Retrieve missing blocking artifacts before implementation.".to_string(),
+        "Do not assume undocumented architecture.".to_string(),
+        "Generate implementation only after inspecting referenced specifications.".to_string(),
+    ]
+}
+
+fn prioritize_knowledge_gaps(
+    primary: &Option<KnowledgeArtifact>,
+    repos: &[String],
+    adrs: &[LabeledArtifact],
+    docs: &[LabeledArtifact],
+    prs: &[LabeledArtifact],
+    aspects: &HashSet<DomainAspect>,
+) -> PrioritizedKnowledgeGaps {
+    let mut critical = Vec::new();
+    let mut recommended = Vec::new();
+    let mut optional = Vec::new();
+
+    if primary.is_none() {
+        critical.push("Primary artifact is un-indexed in local Atlas database.".to_string());
+    }
+
+    if aspects.contains(&DomainAspect::CodeImplementation) || aspects.contains(&DomainAspect::TaskTracking) {
+        if repos.is_empty() {
+            critical.push("Target repository is not explicitly identified.".to_string());
+        }
+        if adrs.is_empty() {
+            recommended.push("Architecture Decision Records (ADRs) are missing or unlinked.".to_string());
+        }
+        if prs.is_empty() {
+            recommended.push("Previous implementation pull requests & commits are missing.".to_string());
+        }
+    }
+
+    if docs.is_empty() {
+        recommended.push("Technical specification document is not indexed.".to_string());
+    }
+
+    optional.push("Figma UI design assets or mockups.".to_string());
+    optional.push("Historical commit ancestry graph.".to_string());
+
+    PrioritizedKnowledgeGaps {
+        critical,
+        recommended,
+        optional,
+    }
+}
+
+
+

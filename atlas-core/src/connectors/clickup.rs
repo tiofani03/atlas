@@ -70,9 +70,27 @@ struct ClickupTasksResponse {
     last_page: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ClickupDocItem {
+    id: String,
+    name: Option<String>,
+    date_created: Option<Value>,
+    date_updated: Option<Value>,
+    workspace_id: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ClickupDocsResponse {
+    #[serde(default)]
+    docs: Vec<ClickupDocItem>,
+    #[serde(default)]
+    next_cursor: Option<String>,
+}
+
 impl ClickupConnector {
     pub fn new(id: String, config: ConnectorConfig) -> Result<Self> {
-        let token = config.get_api_token()?;
+        let raw_token = config.get_api_token()?;
+        let token = raw_token.trim().to_string();
 
         let base_url = if !config.instance_url.is_empty() {
             config.instance_url.trim_end_matches('/').to_string()
@@ -155,25 +173,46 @@ impl ClickupConnector {
     }
 
     async fn fetch_teams(&self) -> Result<Vec<ClickupTeam>> {
-        if let Some(ref ws) = self.config.workspace {
-            if !ws.is_empty() {
-                return Ok(vec![ClickupTeam {
-                    id: ws.clone(),
-                    name: Some("Configured Workspace".to_string()),
-                }]);
-            }
-        }
-
         let url = format!("{}/team", self.base_url);
         let res = self.send_with_retry(self.client.get(&url)).await?;
 
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!(
+                    "ClickUp API 401 Unauthorized: Invalid or expired API Token for connector '{}'. Please check your Personal API Token (pk_...). Details: {}",
+                    self.id,
+                    body
+                );
+            }
             anyhow::bail!("ClickUp GET /team error ({}): {}", status, body);
         }
 
         let resp: ClickupTeamsResponse = res.json().await?;
+
+        if let Some(ref ws) = self.config.workspace {
+            let ws_clean = ws.trim();
+            if !ws_clean.is_empty() {
+                let found = resp.teams.iter().find(|t| t.id == ws_clean);
+                if let Some(t) = found {
+                    return Ok(vec![t.clone()]);
+                } else {
+                    let available: Vec<String> = resp
+                        .teams
+                        .iter()
+                        .map(|t| format!("'{}' ({})", t.id, t.name.as_deref().unwrap_or("Unnamed Workspace")))
+                        .collect();
+                    anyhow::bail!(
+                        "ClickUp Workspace ID '{}' is NOT authorized for your current API Token (401 / OAUTH_192). Authorized workspaces for your token: [{}]. Solution: Clear the Workspace ID setting to auto-detect authorized workspaces, or generate a Personal API Token from ClickUp Settings > Apps for workspace '{}'.",
+                        ws_clean,
+                        if available.is_empty() { "None".to_string() } else { available.join(", ") },
+                        ws_clean
+                    );
+                }
+            }
+        }
+
         Ok(resp.teams)
     }
 
@@ -184,6 +223,14 @@ impl ClickupConnector {
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::UNAUTHORIZED || body.contains("OAUTH_192") || body.contains("Workspace not authorized") {
+                anyhow::bail!(
+                    "ClickUp 401 Unauthorized: Your API Token is not authorized for Workspace ID '{}' (OAUTH_192: Workspace not authorized). Solution: In your ClickUp settings, re-generate your Personal API Token for workspace '{}' or leave Workspace ID blank in connector settings. Response: {}",
+                    team_id,
+                    team_id,
+                    body
+                );
+            }
             anyhow::bail!("ClickUp GET /team/{}/space error ({}): {}", team_id, status, body);
         }
 
@@ -211,28 +258,56 @@ impl ClickupConnector {
 
         // 1. Folders in space
         let folder_url = format!("{}/space/{}/folder?archived=false", self.base_url, space_id);
-        if let Ok(res) = self.send_with_retry(self.client.get(&folder_url)).await {
-            if res.status().is_success() {
-                if let Ok(resp) = res.json::<ClickupFoldersResponse>().await {
-                    for folder in resp.folders {
-                        let folder_name = folder.name.clone().unwrap_or_default();
-                        for list in folder.lists {
-                            result.push((list, Some(folder_name.clone()), space_id.to_string()));
+        match self.send_with_retry(self.client.get(&folder_url)).await {
+            Ok(res) => {
+                if res.status().is_success() {
+                    match res.json::<ClickupFoldersResponse>().await {
+                        Ok(resp) => {
+                            for folder in resp.folders {
+                                let folder_name = folder.name.clone().unwrap_or_default();
+                                for list in folder.lists {
+                                    result.push((list, Some(folder_name.clone()), space_id.to_string()));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            warn!("ClickUp failed to parse folders JSON for space {}: {}", space_id, err);
                         }
                     }
+                } else {
+                    let status = res.status();
+                    let body = res.text().await.unwrap_or_default();
+                    warn!("ClickUp GET /space/{}/folder failed ({}): {}", space_id, status, body);
                 }
+            }
+            Err(err) => {
+                warn!("ClickUp GET /space/{}/folder request error: {}", space_id, err);
             }
         }
 
         // 2. Folderless lists in space
         let list_url = format!("{}/space/{}/list?archived=false", self.base_url, space_id);
-        if let Ok(res) = self.send_with_retry(self.client.get(&list_url)).await {
-            if res.status().is_success() {
-                if let Ok(resp) = res.json::<ClickupListsResponse>().await {
-                    for list in resp.lists {
-                        result.push((list, None, space_id.to_string()));
+        match self.send_with_retry(self.client.get(&list_url)).await {
+            Ok(res) => {
+                if res.status().is_success() {
+                    match res.json::<ClickupListsResponse>().await {
+                        Ok(resp) => {
+                            for list in resp.lists {
+                                result.push((list, None, space_id.to_string()));
+                            }
+                        }
+                        Err(err) => {
+                            warn!("ClickUp failed to parse lists JSON for space {}: {}", space_id, err);
+                        }
                     }
+                } else {
+                    let status = res.status();
+                    let body = res.text().await.unwrap_or_default();
+                    warn!("ClickUp GET /space/{}/list failed ({}): {}", space_id, status, body);
                 }
+            }
+            Err(err) => {
+                warn!("ClickUp GET /space/{}/list request error: {}", space_id, err);
             }
         }
 
@@ -267,6 +342,152 @@ impl ClickupConnector {
             Utc.timestamp_opt(secs, nsecs).single()
         })
     }
+
+    pub async fn fetch_docs(&self, team_id: &str) -> Result<Vec<KnowledgeArtifact>> {
+        let mut doc_artifacts = Vec::new();
+        let mut next_cursor: Option<String> = None;
+        let v3_base_url = "https://api.clickup.com/api/v3";
+        let now = Utc::now();
+
+        loop {
+            let mut url = format!("{}/workspaces/{}/docs", v3_base_url, team_id);
+            if let Some(ref cursor) = next_cursor {
+                url.push_str(&format!("?cursor={}", cursor));
+            }
+
+            let res = match self.send_with_retry(self.client.get(&url)).await {
+                Ok(r) => r,
+                Err(err) => {
+                    warn!("ClickUp GET /v3/workspaces/{}/docs request error: {}", team_id, err);
+                    break;
+                }
+            };
+
+            if !res.status().is_success() {
+                let status = res.status();
+                let body = res.text().await.unwrap_or_default();
+                warn!("ClickUp GET /v3/workspaces/{}/docs failed ({}): {}", team_id, status, body);
+                break;
+            }
+
+            let resp: ClickupDocsResponse = match res.json().await {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    warn!("ClickUp failed to parse Docs response for workspace {}: {}", team_id, err);
+                    break;
+                }
+            };
+
+            if resp.docs.is_empty() {
+                break;
+            }
+
+            for doc in &resp.docs {
+                let pages_url = format!("{}/workspaces/{}/docs/{}/pages", v3_base_url, team_id, doc.id);
+                let pages_res = match self.send_with_retry(self.client.get(&pages_url)).await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        warn!("ClickUp GET doc pages error for doc {}: {}", doc.id, err);
+                        continue;
+                    }
+                };
+
+                if !pages_res.status().is_success() {
+                    warn!("ClickUp GET doc pages failed for doc {}: {}", doc.id, pages_res.status());
+                    continue;
+                }
+
+                let pages_json: Value = match pages_res.json().await {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let pages_array = if let Some(arr) = pages_json.as_array() {
+                    arr.clone()
+                } else if pages_json.is_object() {
+                    vec![pages_json]
+                } else {
+                    Vec::new()
+                };
+
+                for page_val in pages_array {
+                    let page_id = page_val
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&doc.id)
+                        .to_string();
+
+                    let page_name = page_val
+                        .get("name")
+                        .or_else(|| page_val.get("title"))
+                        .and_then(|v| v.as_str())
+                        .or_else(|| doc.name.as_deref())
+                        .unwrap_or("Untitled Doc Page")
+                        .to_string();
+
+                    let body = page_val
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let doc_name = doc.name.as_deref().unwrap_or("Untitled ClickUp Doc");
+                    let summary = format!("ClickUp Doc: {} | Workspace ID: {}", doc_name, team_id);
+
+                    let created_at = page_val
+                        .get("date_created")
+                        .or_else(|| doc.date_created.as_ref())
+                        .and_then(Self::parse_timestamp);
+
+                    let updated_at = page_val
+                        .get("date_updated")
+                        .or_else(|| doc.date_updated.as_ref())
+                        .and_then(Self::parse_timestamp)
+                        .unwrap_or(now);
+
+                    let tags = vec![
+                        "kind:doc".to_string(),
+                        "provider:clickup".to_string(),
+                        format!("workspace:{}", team_id),
+                        format!("doc:{}", doc_name.to_lowercase()),
+                    ];
+
+                    let artifact_id = KnowledgeArtifact::generate_id("clickup", v3_base_url, &page_id);
+                    let checksum = KnowledgeArtifact::compute_checksum(&page_name, Some(&summary), &body, &tags);
+                    let web_url = format!("https://app.clickup.com/{}/v/d/{}", team_id, doc.id);
+
+                    doc_artifacts.push(KnowledgeArtifact {
+                        id: artifact_id,
+                        kind: ArtifactKind::Document,
+                        title: page_name,
+                        summary: Some(summary),
+                        body,
+                        provider: "clickup".to_string(),
+                        source_id: format!("CU-DOC-{}", page_id),
+                        source_url: web_url,
+                        repository: None,
+                        tags,
+                        relationships: Vec::new(),
+                        created_at,
+                        updated_at,
+                        synced_at: now,
+                        checksum,
+                        metadata: page_val,
+                    });
+                }
+            }
+
+            match resp.next_cursor {
+                Some(ref c) if !c.is_empty() => {
+                    next_cursor = Some(c.clone());
+                }
+                _ => break,
+            }
+        }
+
+        info!("ClickUp connector [{}] fetched {} Docs pages for team {}", self.id, doc_artifacts.len(), team_id);
+        Ok(doc_artifacts)
+    }
 }
 
 #[async_trait::async_trait]
@@ -293,7 +514,7 @@ impl Connector for ClickupConnector {
 
         let mut target_lists = Vec::new();
 
-        for team in teams {
+        for team in &teams {
             let spaces = self.fetch_spaces(&team.id).await?;
             for space in spaces {
                 let lists_with_context = self.fetch_lists_for_space(&space.id).await?;
@@ -521,6 +742,26 @@ impl Connector for ClickupConnector {
                 }
 
                 page += 1;
+            }
+        }
+
+        // Fetch ClickUp Workspace Docs (v3 API)
+        for team in &teams {
+            match self.fetch_docs(&team.id).await {
+                Ok(docs) => {
+                    info!("ClickUp connector [{}] fetched {} Docs pages for team {}", self.id, docs.len(), team.id);
+                    for doc_art in docs {
+                        if let Some(since_dt) = since {
+                            if doc_art.updated_at < since_dt {
+                                continue;
+                            }
+                        }
+                        objects.push(doc_art);
+                    }
+                }
+                Err(err) => {
+                    warn!("ClickUp connector [{}] failed to fetch Docs for team {}: {}", self.id, team.id, err);
+                }
             }
         }
 

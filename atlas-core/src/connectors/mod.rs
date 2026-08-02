@@ -13,6 +13,7 @@ pub mod markdown;
 pub mod notion;
 pub mod openapi;
 pub mod spreadsheet;
+pub mod v2;
 
 use crate::domain::KnowledgeArtifact;
 use anyhow::Result;

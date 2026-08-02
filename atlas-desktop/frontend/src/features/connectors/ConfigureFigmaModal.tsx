@@ -91,12 +91,14 @@ export const ConfigureFigmaModal: React.FC<ModalProps> = ({ isOpen, onClose, onS
           </div>
 
           <div>
-            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">Personal Access Token (figd_...)</label>
+            <label className="block text-slate-600 dark:text-zinc-400 font-medium mb-1">
+              Personal Access Token {initialConfig && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">(Saved — leave empty to keep unchanged)</span>}
+            </label>
             <input
               type="password"
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
-              placeholder={initialConfig ? 'Leave blank to keep existing token' : 'figd_...'}
+              placeholder={initialConfig ? '•••••••• (Token Saved)' : 'figd_...'}
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-pink-500 font-mono"
             />
           </div>
