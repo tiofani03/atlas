@@ -166,4 +166,39 @@ mod tests {
         assert_eq!(conn.id(), "figma-test");
         assert_eq!(conn.provider(), "figma");
     }
+
+    #[test]
+    fn test_figma_extract_nodes() {
+        let mut cfg = ConnectorConfig::default();
+        cfg.provider = "figma".to_string();
+        cfg.api_token = Some("figd_token_12345".to_string());
+        let conn = FigmaConnector::new("figma-nodes".to_string(), cfg).unwrap();
+
+        let doc_json = serde_json::json!({
+            "id": "0:0",
+            "name": "Document",
+            "type": "DOCUMENT",
+            "children": [
+                {
+                    "id": "0:1",
+                    "name": "Page 1",
+                    "type": "CANVAS",
+                    "children": [
+                        {
+                            "id": "1:2",
+                            "name": "Button Component",
+                            "type": "COMPONENT"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let mut artifacts = Vec::new();
+        conn.extract_nodes("aBC123xYz", &doc_json, 1, 3, &mut artifacts, None);
+
+        assert_eq!(artifacts.len(), 2); // CANVAS + COMPONENT
+        assert!(artifacts.iter().any(|a| a.title.contains("Page 1")));
+        assert!(artifacts.iter().any(|a| a.title.contains("Button Component")));
+    }
 }

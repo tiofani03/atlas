@@ -42,6 +42,86 @@ impl GitlabConnector {
             "https://gitlab.com".to_string()
         }
     }
+
+    fn parse_merge_requests_json(&self, base: &str, project: &str, mrs: &[Value], artifacts: &mut Vec<KnowledgeArtifact>) {
+        for mr in mrs {
+            let iid = mr["iid"].as_u64().unwrap_or(0);
+            let title = mr["title"].as_str().unwrap_or("Untitled MR").to_string();
+            let description = mr["description"].as_str().unwrap_or("");
+            let web_url = mr["web_url"].as_str().unwrap_or("").to_string();
+            let source_id = format!("{}/mr/{}", project, iid);
+
+            let created_at = mr["created_at"]
+                .as_str()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)));
+            let updated_at = mr["updated_at"]
+                .as_str()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)))
+                .unwrap_or_else(Utc::now);
+
+            let canonical_id = KnowledgeArtifact::generate_id("gitlab", base, &source_id);
+            let checksum = KnowledgeArtifact::compute_checksum(&title, None, description, &[]);
+
+            artifacts.push(KnowledgeArtifact {
+                id: canonical_id,
+                kind: ArtifactKind::PullRequest,
+                title,
+                summary: None,
+                body: description.to_string(),
+                provider: "gitlab".to_string(),
+                source_id,
+                source_url: web_url,
+                repository: Some(project.to_string()),
+                tags: vec!["gitlab:mr".to_string()],
+                relationships: Vec::new(),
+                created_at,
+                updated_at,
+                synced_at: Utc::now(),
+                checksum,
+                metadata: mr.clone(),
+            });
+        }
+    }
+
+    fn parse_issues_json(&self, base: &str, project: &str, issues: &[Value], artifacts: &mut Vec<KnowledgeArtifact>) {
+        for issue in issues {
+            let iid = issue["iid"].as_u64().unwrap_or(0);
+            let title = issue["title"].as_str().unwrap_or("Untitled Issue").to_string();
+            let description = issue["description"].as_str().unwrap_or("");
+            let web_url = issue["web_url"].as_str().unwrap_or("").to_string();
+            let source_id = format!("{}/issue/{}", project, iid);
+
+            let created_at = issue["created_at"]
+                .as_str()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)));
+            let updated_at = issue["updated_at"]
+                .as_str()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)))
+                .unwrap_or_else(Utc::now);
+
+            let canonical_id = KnowledgeArtifact::generate_id("gitlab", base, &source_id);
+            let checksum = KnowledgeArtifact::compute_checksum(&title, None, description, &[]);
+
+            artifacts.push(KnowledgeArtifact {
+                id: canonical_id,
+                kind: ArtifactKind::Issue,
+                title,
+                summary: None,
+                body: description.to_string(),
+                provider: "gitlab".to_string(),
+                source_id,
+                source_url: web_url,
+                repository: Some(project.to_string()),
+                tags: vec!["gitlab:issue".to_string()],
+                relationships: Vec::new(),
+                created_at,
+                updated_at,
+                synced_at: Utc::now(),
+                checksum,
+                metadata: issue.clone(),
+            });
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -57,10 +137,10 @@ impl Connector for GitlabConnector {
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let mut artifacts = Vec::new();
         let base = self.base_url();
+        let updated_after = since.map(|s| s.to_rfc3339());
 
         for project in &self.config.projects {
             let encoded_project = project.replace('/', "%2F");
-            let updated_after = since.map(|ts| ts.to_rfc3339());
 
             // 1. Fetch Merge Requests
             let mut mr_url = format!("{}/api/v4/projects/{}/merge_requests?per_page=100", base, encoded_project);
@@ -71,43 +151,7 @@ impl Connector for GitlabConnector {
             if let Ok(res) = self.client.get(&mr_url).send().await {
                 if res.status().is_success() {
                     if let Ok(mrs) = res.json::<Vec<Value>>().await {
-                        for mr in mrs {
-                            let iid = mr["iid"].as_u64().unwrap_or(0);
-                            let title = mr["title"].as_str().unwrap_or("Untitled MR").to_string();
-                            let description = mr["description"].as_str().unwrap_or("");
-                            let web_url = mr["web_url"].as_str().unwrap_or("").to_string();
-                            let source_id = format!("{}/mr/{}", project, iid);
-
-                            let created_at = mr["created_at"]
-                                .as_str()
-                                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)));
-                            let updated_at = mr["updated_at"]
-                                .as_str()
-                                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)))
-                                .unwrap_or_else(Utc::now);
-
-                            let canonical_id = KnowledgeArtifact::generate_id("gitlab", &base, &source_id);
-                            let checksum = KnowledgeArtifact::compute_checksum(&title, None, description, &[]);
-
-                            artifacts.push(KnowledgeArtifact {
-                                id: canonical_id,
-                                kind: ArtifactKind::PullRequest,
-                                title,
-                                summary: None,
-                                body: description.to_string(),
-                                provider: "gitlab".to_string(),
-                                source_id,
-                                source_url: web_url,
-                                repository: Some(project.clone()),
-                                tags: vec!["gitlab:mr".to_string()],
-                                relationships: Vec::new(),
-                                created_at,
-                                updated_at,
-                                synced_at: Utc::now(),
-                                checksum,
-                                metadata: mr,
-                            });
-                        }
+                        self.parse_merge_requests_json(&base, project, &mrs, &mut artifacts);
                     }
                 }
             }
@@ -121,43 +165,7 @@ impl Connector for GitlabConnector {
             if let Ok(res) = self.client.get(&issues_url).send().await {
                 if res.status().is_success() {
                     if let Ok(issues) = res.json::<Vec<Value>>().await {
-                        for issue in issues {
-                            let iid = issue["iid"].as_u64().unwrap_or(0);
-                            let title = issue["title"].as_str().unwrap_or("Untitled Issue").to_string();
-                            let description = issue["description"].as_str().unwrap_or("");
-                            let web_url = issue["web_url"].as_str().unwrap_or("").to_string();
-                            let source_id = format!("{}/issue/{}", project, iid);
-
-                            let created_at = issue["created_at"]
-                                .as_str()
-                                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)));
-                            let updated_at = issue["updated_at"]
-                                .as_str()
-                                .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)))
-                                .unwrap_or_else(Utc::now);
-
-                            let canonical_id = KnowledgeArtifact::generate_id("gitlab", &base, &source_id);
-                            let checksum = KnowledgeArtifact::compute_checksum(&title, None, description, &[]);
-
-                            artifacts.push(KnowledgeArtifact {
-                                id: canonical_id,
-                                kind: ArtifactKind::Issue,
-                                title,
-                                summary: None,
-                                body: description.to_string(),
-                                provider: "gitlab".to_string(),
-                                source_id,
-                                source_url: web_url,
-                                repository: Some(project.clone()),
-                                tags: vec!["gitlab:issue".to_string()],
-                                relationships: Vec::new(),
-                                created_at,
-                                updated_at,
-                                synced_at: Utc::now(),
-                                checksum,
-                                metadata: issue,
-                            });
-                        }
+                        self.parse_issues_json(&base, project, &issues, &mut artifacts);
                     }
                 }
             }
@@ -181,5 +189,29 @@ mod tests {
         let conn = GitlabConnector::new("gitlab-test".to_string(), cfg).unwrap();
         assert_eq!(conn.id(), "gitlab-test");
         assert_eq!(conn.provider(), "gitlab");
+    }
+
+    #[test]
+    fn test_gitlab_parse_json() {
+        let mut cfg = ConnectorConfig::default();
+        cfg.provider = "gitlab".to_string();
+        cfg.api_token = Some("glpat-test12345".to_string());
+        let conn = GitlabConnector::new("gitlab-parse".to_string(), cfg).unwrap();
+
+        let mr_json = serde_json::json!({
+            "iid": 42,
+            "title": "Add OAuth2 PKCE Flow",
+            "description": "Implements PKCE security for mobile clients",
+            "web_url": "https://gitlab.com/group/repo/-/merge_requests/42",
+            "created_at": "2026-08-01T12:00:00Z",
+            "updated_at": "2026-08-02T12:00:00Z"
+        });
+
+        let mut artifacts = Vec::new();
+        conn.parse_merge_requests_json("https://gitlab.com", "group/repo", &[mr_json], &mut artifacts);
+
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].kind, ArtifactKind::PullRequest);
+        assert!(artifacts[0].title.contains("Add OAuth2 PKCE Flow"));
     }
 }
