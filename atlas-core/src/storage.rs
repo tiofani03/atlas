@@ -533,6 +533,28 @@ impl Storage {
             }
         }
 
+        // 1b. ClickUp Task Key Regex (e.g. CU-123, ClickUp#92, ClickUp #91)
+        if let Ok(cu_re) = regex::Regex::new(r"(?i)\b(?:CU-|ClickUp\s*#?)([A-Za-z0-9]+)\b") {
+            for cap in cu_re.captures_iter(&full_text) {
+                if let Some(m) = cap.get(1) {
+                    let task_key = format!("CU-{}", m.as_str());
+                    let raw_key = m.as_str().to_string();
+                    if task_key != artifact.source_id && raw_key != artifact.source_id && task_key != artifact.id {
+                        let (rel_type, rev_type) = if artifact.kind == ArtifactKind::Commit
+                            || artifact.kind == ArtifactKind::PullRequest
+                        {
+                            ("implements".to_string(), "implemented_by".to_string())
+                        } else {
+                            ("references".to_string(), "referenced_by".to_string())
+                        };
+
+                        add_edge(artifact.source_id.clone(), task_key.clone(), rel_type.clone(), rev_type.clone());
+                        add_edge(artifact.source_id.clone(), raw_key, rel_type, rev_type);
+                    }
+                }
+            }
+        }
+
         // 2. PR Number Regex (e.g. #307 or Merge pull request #148 or /pull/23 - exact integer boundaries)
         if let Ok(pr_re) = regex::Regex::new(r"(?:\B#|\b#|/pull/)([0-9]+)\b") {
             if let Some(repo) = &artifact.repository {
@@ -958,6 +980,35 @@ impl Storage {
                  WHERE source_id = ?1 OR LOWER(source_id) = LOWER(?1) OR title = ?1",
             )?;
             let rows = stmt.query_map(params![clean], Self::row_to_artifact)?;
+            for r in rows {
+                let art = r?;
+                if seen_ids.insert(art.id.clone()) {
+                    matches.push(art);
+                }
+            }
+        }
+
+        // 5. ClickUp Task Alias Fallback Resolution
+        if matches.is_empty() {
+            let cu_query = if clean.to_lowercase().starts_with("cu-") {
+                clean[3..].to_string()
+            } else if clean.to_lowercase().starts_with("clickup#") {
+                clean[8..].to_string()
+            } else {
+                clean.to_string()
+            };
+
+            let formatted_cu = format!("CU-{}", cu_query);
+
+            let mut stmt = conn.prepare(
+                "SELECT id, kind, title, summary, body, provider, source_id, source_url,
+                        repository, tags, relationships, created_at, updated_at, synced_at,
+                        checksum, metadata
+                 FROM knowledge_artifacts
+                 WHERE provider = 'clickup'
+                   AND (source_id = ?1 OR source_id = ?2 OR LOWER(source_id) = LOWER(?1) OR json_extract(metadata, '$.id') = ?1 OR json_extract(metadata, '$.custom_id') = ?1)",
+            )?;
+            let rows = stmt.query_map(params![cu_query, formatted_cu], Self::row_to_artifact)?;
             for r in rows {
                 let art = r?;
                 if seen_ids.insert(art.id.clone()) {

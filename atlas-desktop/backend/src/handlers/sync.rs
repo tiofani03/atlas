@@ -1,7 +1,9 @@
 use crate::state::AppState;
 use atlas_core::{
-    ConfluenceConnector, ConnectorConfig, ConnectorInstance, GithubConnector, JiraConnector,
-    LocalGitConnector, MarkdownConnector, SyncEngine,
+    AsanaConnector, AzureDevopsConnector, BitbucketConnector, ClickupConnector, ConfluenceConnector,
+    ConnectorConfig, ConnectorInstance, FigmaConnector, GithubConnector, GitlabConnector, JiraConnector,
+    LinearConnector, LocalGitConnector, MarkdownConnector, NotionConnector, OpenapiConnector,
+    SpreadsheetConnector, SyncEngine,
 };
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::Utc;
@@ -76,6 +78,16 @@ pub async fn trigger_sync(
                     "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
                     "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
                     "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
+                    "clickup" => ConnectorInstance::Clickup(ClickupConnector::new(id.clone(), connector_cfg)?),
+                    "linear" => ConnectorInstance::Linear(LinearConnector::new(id.clone(), connector_cfg)?),
+                    "asana" => ConnectorInstance::Asana(AsanaConnector::new(id.clone(), connector_cfg)?),
+                    "azure_devops" => ConnectorInstance::AzureDevops(AzureDevopsConnector::new(id.clone(), connector_cfg)?),
+                    "gitlab" => ConnectorInstance::Gitlab(GitlabConnector::new(id.clone(), connector_cfg)?),
+                    "bitbucket" => ConnectorInstance::Bitbucket(BitbucketConnector::new(id.clone(), connector_cfg)?),
+                    "openapi" => ConnectorInstance::Openapi(OpenapiConnector::new(id.clone(), connector_cfg)?),
+                    "figma" => ConnectorInstance::Figma(FigmaConnector::new(id.clone(), connector_cfg)?),
+                    "notion" => ConnectorInstance::Notion(NotionConnector::new(id.clone(), connector_cfg)?),
+                    "spreadsheet" => ConnectorInstance::Spreadsheet(SpreadsheetConnector::new(id.clone(), connector_cfg)?),
                     "markdown" => {
                         let path_str = connector_cfg.path.as_deref().unwrap_or(".");
                         let mut conn = MarkdownConnector::new(id.clone(), path_str);

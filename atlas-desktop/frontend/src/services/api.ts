@@ -9,6 +9,16 @@ import {
   GithubConfigPayload,
   MarkdownConfigPayload,
   LocalGitConfigPayload,
+  ClickupConfigPayload,
+  LinearConfigPayload,
+  GitlabConfigPayload,
+  OpenapiConfigPayload,
+  AzureDevopsConfigPayload,
+  BitbucketConfigPayload,
+  FigmaConfigPayload,
+  NotionConfigPayload,
+  AsanaConfigPayload,
+  SpreadsheetConfigPayload,
 } from '../types';
 
 const API_BASE = '/api';
@@ -57,6 +67,76 @@ export const api = {
 
   saveLocalGitConnector: (data: LocalGitConfigPayload) =>
     fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/local_git`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveClickupConnector: (data: ClickupConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/clickup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveLinearConnector: (data: LinearConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/linear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveGitlabConnector: (data: GitlabConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/gitlab`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveOpenapiConnector: (data: OpenapiConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/openapi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveAzureDevopsConnector: (data: AzureDevopsConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/azure_devops`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveBitbucketConnector: (data: BitbucketConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/bitbucket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveFigmaConnector: (data: FigmaConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/figma`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveNotionConnector: (data: NotionConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/notion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveAsanaConnector: (data: AsanaConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/asana`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveSpreadsheetConnector: (data: SpreadsheetConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/spreadsheet`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
