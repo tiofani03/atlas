@@ -7,6 +7,7 @@ import {
   JiraConfigPayload,
   ConfluenceConfigPayload,
   GithubConfigPayload,
+  ClickUpConfigPayload,
   MarkdownConfigPayload,
   LocalGitConfigPayload,
 } from '../types';
@@ -43,6 +44,13 @@ export const api = {
 
   saveGithubConnector: (data: GithubConfigPayload) =>
     fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/github`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  saveClickUpConnector: (data: ClickUpConfigPayload) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/clickup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

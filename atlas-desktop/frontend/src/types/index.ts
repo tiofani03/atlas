@@ -10,7 +10,7 @@ export interface StatusInfo {
 
 export interface ConnectorInfo {
   id: string;
-  provider: 'jira' | 'confluence' | 'github' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'local_git' | 'notion' | 'gitlab' | 'bitbucket';
+  provider: 'jira' | 'confluence' | 'github' | 'clickup' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'local_git' | 'notion' | 'gitlab' | 'bitbucket';
   instance_url: string;
   email: string;
   projects: string[];
@@ -106,6 +106,16 @@ export interface GithubConfigPayload {
   repos?: string[];
 }
 
+export interface ClickUpConfigPayload {
+  id: string;
+  instance_url?: string;
+  api_token?: string;
+  workspaces?: string[];
+  spaces?: string[];
+  folders?: string[];
+  lists?: string[];
+}
+
 export interface MarkdownConfigPayload {
   id: string;
   path?: string;
@@ -118,5 +128,4 @@ export interface LocalGitConfigPayload {
   path?: string;
   paths?: string[];
 }
-
 

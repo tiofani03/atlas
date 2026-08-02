@@ -1,3 +1,4 @@
+pub mod clickup;
 pub mod confluence;
 pub mod github;
 pub mod jira;
@@ -7,6 +8,7 @@ pub mod markdown;
 use crate::domain::KnowledgeArtifact;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use clickup::ClickUpConnector;
 use confluence::ConfluenceConnector;
 use github::GithubConnector;
 use jira::JiraConnector;
@@ -27,6 +29,7 @@ pub trait Connector: Send + Sync {
 
 pub enum ConnectorInstance {
     Jira(JiraConnector),
+    ClickUp(ClickUpConnector),
     Confluence(ConfluenceConnector),
     Github(GithubConnector),
     Markdown(MarkdownConnector),
@@ -38,6 +41,7 @@ impl Connector for ConnectorInstance {
     fn id(&self) -> &str {
         match self {
             ConnectorInstance::Jira(c) => c.id(),
+            ConnectorInstance::ClickUp(c) => c.id(),
             ConnectorInstance::Confluence(c) => c.id(),
             ConnectorInstance::Github(c) => c.id(),
             ConnectorInstance::Markdown(c) => c.id(),
@@ -48,6 +52,7 @@ impl Connector for ConnectorInstance {
     fn provider(&self) -> &str {
         match self {
             ConnectorInstance::Jira(c) => c.provider(),
+            ConnectorInstance::ClickUp(c) => c.provider(),
             ConnectorInstance::Confluence(c) => c.provider(),
             ConnectorInstance::Github(c) => c.provider(),
             ConnectorInstance::Markdown(c) => c.provider(),
@@ -58,6 +63,7 @@ impl Connector for ConnectorInstance {
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         match self {
             ConnectorInstance::Jira(c) => c.fetch_modified(since).await,
+            ConnectorInstance::ClickUp(c) => c.fetch_modified(since).await,
             ConnectorInstance::Confluence(c) => c.fetch_modified(since).await,
             ConnectorInstance::Github(c) => c.fetch_modified(since).await,
             ConnectorInstance::Markdown(c) => c.fetch_modified(since).await,
@@ -65,5 +71,3 @@ impl Connector for ConnectorInstance {
         }
     }
 }
-
-

@@ -48,6 +48,18 @@ pub struct GithubConfigPayload {
 }
 
 #[derive(Deserialize)]
+pub struct ClickUpConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub workspaces: Option<Vec<String>>,
+    pub spaces: Option<Vec<String>>,
+    pub folders: Option<Vec<String>>,
+    pub lists: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
 pub struct MarkdownConfigPayload {
     pub id: String,
     pub path: Option<String>,
@@ -311,9 +323,70 @@ pub async fn save_github_connector(
     )
 }
 
-pub async fn validate_credentials(
-    Json(payload): Json<ValidatePayload>,
+pub async fn save_clickup_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<ClickUpConfigPayload>,
 ) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            )
+        }
+    };
+
+    let existing = cfg.connectors.get(&payload.id);
+
+    let final_token = match payload.api_token {
+        Some(ref t) if !t.trim().is_empty() => Some(t.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token.clone()),
+    };
+
+    let final_token_env = match payload.api_token_env {
+        Some(ref e) if !e.trim().is_empty() => Some(e.trim().to_string()),
+        _ => existing.and_then(|e| e.api_token_env.clone()),
+    };
+
+    let final_url = match payload.instance_url {
+        Some(ref u) if !u.trim().is_empty() => u.trim().to_string(),
+        _ => existing
+            .map(|e| e.instance_url.clone())
+            .unwrap_or_else(|| "https://api.clickup.com/api/v2".to_string()),
+    };
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "clickup".to_string(),
+            instance_url: final_url,
+            email: String::new(),
+            api_token: final_token,
+            api_token_env: final_token_env,
+            projects: payload.workspaces.unwrap_or_default(),
+            spaces: payload.spaces.unwrap_or_default(),
+            repos: payload.lists.unwrap_or_default(),
+            path: None,
+            paths: payload.folders.unwrap_or_default(),
+            glob_patterns: Vec::new(),
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "success": true, "id": payload.id })),
+    )
+}
+
+pub async fn validate_credentials(Json(payload): Json<ValidatePayload>) -> impl IntoResponse {
     let test_cfg = ConnectorConfig {
         provider: payload.provider.clone(),
         instance_url: payload.instance_url,
@@ -330,15 +403,20 @@ pub async fn validate_credentials(
 
     let result = match payload.provider.as_str() {
         "jira" => atlas_core::JiraConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "confluence" => atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "confluence" => {
+            atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ())
+        }
         "github" => atlas_core::GithubConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "clickup" => atlas_core::ClickUpConnector::new("test".to_string(), test_cfg).map(|_| ()),
         _ => Err(anyhow::anyhow!("Unsupported provider")),
     };
 
     match result {
         Ok(_) => (
             StatusCode::OK,
-            Json(serde_json::json!({ "valid": true, "message": "Credentials structure is valid." })),
+            Json(
+                serde_json::json!({ "valid": true, "message": "Credentials structure is valid." }),
+            ),
         ),
         Err(err) => (
             StatusCode::BAD_REQUEST,
@@ -439,9 +517,8 @@ pub async fn save_local_git_connector(
     )
 }
 
-
 pub async fn select_folder() -> impl IntoResponse {
-    let path = tokio::task::spawn_blocking(|| {
+    let path: Option<String> = tokio::task::spawn_blocking(|| {
         #[cfg(target_os = "macos")]
         {
             let output = std::process::Command::new("osascript")
@@ -527,7 +604,10 @@ pub async fn delete_connector(
     if payload.clear_data.unwrap_or(true) {
         if let Ok(storage) = state.get_storage() {
             let provider_opt = conn_cfg.as_ref().map(|c| c.provider.as_str());
-            let repos = conn_cfg.as_ref().map(|c| c.repos.clone()).unwrap_or_default();
+            let repos = conn_cfg
+                .as_ref()
+                .map(|c| c.repos.clone())
+                .unwrap_or_default();
             cleared_count = storage
                 .clear_connector_data(&payload.id, provider_opt, &repos)
                 .unwrap_or(0);

@@ -34,7 +34,7 @@ fn default_log_level() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectorConfig {
-    pub provider: String, // "jira", "confluence", "github", or "markdown"
+    pub provider: String, // "jira", "confluence", "github", "clickup", "markdown", or "local_git"
     #[serde(default)]
     pub instance_url: String,
     #[serde(default)]

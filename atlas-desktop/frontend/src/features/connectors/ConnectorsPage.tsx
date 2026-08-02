@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { ConfigureJiraModal } from './ConfigureJiraModal';
 import { ConfigureConfluenceModal } from './ConfigureConfluenceModal';
 import { ConfigureGithubModal } from './ConfigureGithubModal';
+import { ConfigureClickUpModal } from './ConfigureClickUpModal';
 import { ConfigureMarkdownModal } from './ConfigureMarkdownModal';
 import { ConfigureLocalGitModal } from './ConfigureLocalGitModal';
 import {
@@ -218,6 +219,7 @@ export const ConnectorsPage: React.FC = () => {
   const [isJiraOpen, setIsJiraOpen] = useState(false);
   const [isConfluenceOpen, setIsConfluenceOpen] = useState(false);
   const [isGithubOpen, setIsGithubOpen] = useState(false);
+  const [isClickUpOpen, setIsClickUpOpen] = useState(false);
   const [isMarkdownOpen, setIsMarkdownOpen] = useState(false);
   const [isLocalGitOpen, setIsLocalGitOpen] = useState(false);
 
@@ -256,10 +258,11 @@ export const ConnectorsPage: React.FC = () => {
   const jiraConfig = connectors?.find((c) => c.provider === 'jira');
   const confluenceConfig = connectors?.find((c) => c.provider === 'confluence');
   const githubConfig = connectors?.find((c) => c.provider === 'github');
+  const clickUpConfig = connectors?.find((c) => c.provider === 'clickup');
   const markdownConfig = connectors?.find((c) => c.provider === 'markdown');
   const localGitConfig = connectors?.find((c) => c.provider === 'local_git');
 
-  const configuredCount = (jiraConfig ? 1 : 0) + (confluenceConfig ? 1 : 0) + (githubConfig ? 1 : 0) + (markdownConfig ? 1 : 0) + (localGitConfig ? 1 : 0);
+  const configuredCount = (jiraConfig ? 1 : 0) + (confluenceConfig ? 1 : 0) + (githubConfig ? 1 : 0) + (clickUpConfig ? 1 : 0) + (markdownConfig ? 1 : 0) + (localGitConfig ? 1 : 0);
 
   const categories = [
     { id: 'all', label: 'All Connectors' },
@@ -443,8 +446,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Sync tasks, sprints, goals, and embedded documents from ClickUp workspaces."
               icon={<span className="font-bold text-lg">CU</span>}
               iconBgClass="bg-pink-50 dark:bg-pink-600/20 text-pink-600 dark:text-pink-400 border-pink-200 dark:border-pink-500/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              isAvailable={true}
+              isConfigured={!!clickUpConfig}
+              configuredDetails={
+                clickUpConfig
+                  ? {
+                      urlLabel: 'API URL',
+                      urlValue: clickUpConfig.instance_url,
+                      itemsLabel: 'Workspaces',
+                      itemsValue: clickUpConfig.projects?.join(', ') || 'None',
+                      lastSynced: clickUpConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsClickUpOpen(true)}
+              onSync={() => clickUpConfig && syncMutation.mutate(clickUpConfig.id)}
+              onClearData={() => clickUpConfig && setDeleteTarget({ id: clickUpConfig.id, name: 'ClickUp' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === clickUpConfig?.id}
             />
           </div>
         </div>
@@ -734,6 +753,19 @@ export const ConnectorsPage: React.FC = () => {
           id: githubConfig.id,
           instance_url: githubConfig.instance_url,
           repos: githubConfig.repos,
+        } : undefined}
+      />
+      <ConfigureClickUpModal
+        isOpen={isClickUpOpen}
+        onClose={() => setIsClickUpOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={clickUpConfig ? {
+          id: clickUpConfig.id,
+          instance_url: clickUpConfig.instance_url,
+          workspaces: clickUpConfig.projects,
+          spaces: clickUpConfig.spaces,
+          folders: clickUpConfig.paths || [],
+          lists: clickUpConfig.repos || [],
         } : undefined}
       />
       <ConfigureMarkdownModal

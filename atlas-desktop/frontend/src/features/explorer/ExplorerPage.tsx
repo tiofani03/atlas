@@ -36,6 +36,7 @@ export const ExplorerPage: React.FC = () => {
       'jira',
       'confluence',
       'github',
+      'clickup',
       ...(connectors || []).map((c) => c.provider),
     ])
   );
@@ -119,7 +120,7 @@ export const ExplorerPage: React.FC = () => {
               <option value="">All Providers ({activeProviders.length})</option>
               {activeProviders.map((p) => (
                 <option key={p} value={p}>
-                  {p === 'markdown' ? 'Markdown / Local Docs' : p.charAt(0).toUpperCase() + p.slice(1)}
+                  {p === 'markdown' ? 'Markdown / Local Docs' : p === 'clickup' ? 'ClickUp' : p.charAt(0).toUpperCase() + p.slice(1)}
                 </option>
               ))}
             </select>
@@ -236,6 +237,8 @@ export const ExplorerPage: React.FC = () => {
                               ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/40'
                               : provider === 'github'
                               ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700'
+                              : provider === 'clickup'
+                              ? 'bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40'
                               : 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40'
                           }`}
                         >

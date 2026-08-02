@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use atlas_core::{
-    ConfluenceConnector, ConnectorConfig, ConnectorInstance, GithubConnector, JiraConnector,
-    LocalGitConnector, MarkdownConnector, SyncEngine,
+    ClickUpConnector, ConfluenceConnector, ConnectorConfig, ConnectorInstance, GithubConnector,
+    JiraConnector, LocalGitConnector, MarkdownConnector, SyncEngine,
 };
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::Utc;
@@ -73,9 +73,20 @@ pub async fn trigger_sync(
                 }
 
                 let conn_instance = match connector_cfg.provider.as_str() {
-                    "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
-                    "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
-                    "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
+                    "jira" => {
+                        ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?)
+                    }
+                    "clickup" => ConnectorInstance::ClickUp(ClickUpConnector::new(
+                        id.clone(),
+                        connector_cfg,
+                    )?),
+                    "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(
+                        id.clone(),
+                        connector_cfg,
+                    )?),
+                    "github" => {
+                        ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?)
+                    }
                     "markdown" => {
                         let path_str = connector_cfg.path.as_deref().unwrap_or(".");
                         let mut conn = MarkdownConnector::new(id.clone(), path_str);
@@ -84,7 +95,10 @@ pub async fn trigger_sync(
                         }
                         ConnectorInstance::Markdown(conn)
                     }
-                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(id.clone(), &connector_cfg)?),
+                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(
+                        id.clone(),
+                        &connector_cfg,
+                    )?),
                     _ => continue,
                 };
 
@@ -100,7 +114,8 @@ pub async fn trigger_sync(
             }
 
             Ok::<(), anyhow::Error>(())
-        }.await;
+        }
+        .await;
 
         let mut p = state_clone.sync_progress.write().await;
         p.is_running = false;
