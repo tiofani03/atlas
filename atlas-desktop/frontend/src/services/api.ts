@@ -97,6 +97,13 @@ export const api = {
       method: 'POST',
     }),
 
+  deleteConnector: (id: string, clearData = true) =>
+    fetchJson<{ success: boolean; id: string; cleared_artifacts: number }>(`${API_BASE}/connectors/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, clear_data: clearData }),
+    }),
+
   selectFolder: () =>
     fetchJson<{ success: boolean; path: string | null }>(`${API_BASE}/dialog/select-folder`, {
       method: 'POST',

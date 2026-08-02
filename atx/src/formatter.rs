@@ -849,6 +849,20 @@ pub fn format_context_package(
     out.push_str(&format!("{:<14}: {}\n", "Source URL", pkg.source_info.source_url));
     out.push_str(&format!("{:<14}: {}\n", "Last Synced", pkg.source_info.synced_at));
 
+    if let Some(ref t) = pkg.telemetry {
+        out.push_str("\nPerformance Telemetry (Profiling)\n----------------------------------\n");
+        out.push_str(&format!("{:<32}: {} ms\n", "Primary Artifact Resolution", t.primary_resolution_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "1-Hop Graph Header Traversal", t.hop1_traversal_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "2-Hop Graph Header Traversal", t.hop2_traversal_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "Repository / FTS Search", t.repo_fts_search_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "Candidate Header Ranking", t.candidate_ranking_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "Batch Artifact Hydration", t.artifact_hydration_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "Prompt & Briefing Assembly", t.prompt_assembly_ms));
+        out.push_str(&format!("{:<32}: {} ms\n", "TOTAL TIME", t.total_ms));
+        out.push_str(&format!("{:<32}: {}\n", "Candidate Headers Evaluated", t.candidate_headers_count));
+        out.push_str(&format!("{:<32}: {}\n", "Artifacts Hydrated", t.hydrated_artifacts_count));
+    }
+
     out.trim_end().to_string()
 }
 
@@ -1147,6 +1161,7 @@ mod tests {
                 synced_at: "2026-07-31 15:45 UTC".to_string(),
             },
             summary: "Implementation can begin. Business requirements are available.".to_string(),
+            telemetry: None,
         };
 
         let formatted = format_context_package(&pkg, false, false);

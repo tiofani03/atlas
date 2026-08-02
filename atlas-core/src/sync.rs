@@ -42,25 +42,10 @@ impl SyncEngine {
 
         let now = Utc::now();
 
-        for artifact in artifacts {
-            let existing_checksum = storage.get_existing_checksum(&artifact.id)?;
-
-            match existing_checksum {
-                Some(ref cs) if cs == &artifact.checksum => {
-                    summary.skipped += 1;
-                }
-                Some(_) => {
-                    storage.upsert_artifact(&artifact)?;
-                    summary.updated += 1;
-                }
-                None => {
-                    storage.upsert_artifact(&artifact)?;
-                    summary.inserted += 1;
-                }
-            }
-        }
-
-        let _ = storage.rebuild_all_relationships();
+        let (inserted, updated, skipped) = storage.upsert_artifacts_batch(&artifacts)?;
+        summary.inserted = inserted;
+        summary.updated = updated;
+        summary.skipped = skipped;
 
         storage.update_last_sync(
             &connector_id,

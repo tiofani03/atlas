@@ -1,5 +1,5 @@
 use crate::domain::{ArtifactKind, KnowledgeArtifact};
-use crate::storage::Storage;
+use crate::storage::{ArtifactHeader, Storage};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -10,6 +10,21 @@ pub struct DependencyEdge {
     pub source_id: String,
     pub target_id: String,
     pub relationship_type: String,
+}
+
+/// Profiling telemetry breakdown for context building performance auditing
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContextTelemetry {
+    pub primary_resolution_ms: u128,
+    pub hop1_traversal_ms: u128,
+    pub hop2_traversal_ms: u128,
+    pub repo_fts_search_ms: u128,
+    pub candidate_ranking_ms: u128,
+    pub artifact_hydration_ms: u128,
+    pub prompt_assembly_ms: u128,
+    pub total_ms: u128,
+    pub candidate_headers_count: usize,
+    pub hydrated_artifacts_count: usize,
 }
 
 /// Artifact attached with an explicit relationship label, category, and graph metadata
@@ -131,6 +146,7 @@ pub struct ContextPackage {
     pub ai_briefing: Option<AiBriefing>,
     pub source_info: SourceInfo,
     pub summary: String,
+    pub telemetry: Option<ContextTelemetry>,
 }
 
 /// Options to control ContextBuilder assembly limits
@@ -144,6 +160,8 @@ pub struct ContextOptions {
     pub max_apis: usize,
     pub max_adrs: usize,
     pub max_recommended: usize,
+    pub depth: usize,
+    pub profile: bool,
 }
 
 impl Default for ContextOptions {
@@ -157,6 +175,8 @@ impl Default for ContextOptions {
             max_apis: 5,
             max_adrs: 5,
             max_recommended: 5,
+            depth: 2,
+            profile: false,
         }
     }
 }
@@ -177,13 +197,16 @@ impl<'a> ContextBuilder<'a> {
         target_id: &str,
         options: &ContextOptions,
     ) -> Result<ContextPackage> {
+        let start_total = std::time::Instant::now();
         let normalized_kind = target_kind
             .map(|k| k.trim().to_lowercase())
             .unwrap_or_else(|| "artifact".to_string());
         let clean_target_id = target_id.trim();
 
         // 1. Resolve Primary Artifact / Repository context
+        let start_primary = std::time::Instant::now();
         let (primary_artifact, primary_repo) = self.resolve_primary(&normalized_kind, clean_target_id)?;
+        let t_primary = start_primary.elapsed().as_millis();
 
         let title = primary_artifact
             .as_ref()
@@ -200,113 +223,230 @@ impl<'a> ContextBuilder<'a> {
             .map(|a| a.id.clone())
             .unwrap_or_else(|| clean_target_id.to_string());
 
-        // 2. Gather candidate artifacts & dependency graph edges
-        let mut candidates_map: HashMap<String, (KnowledgeArtifact, f64, Option<String>, bool)> = HashMap::new();
+        // 2. ID-First Header Expansion
+        let mut candidates_map: HashMap<String, (ArtifactHeader, f64, Option<String>, bool)> = HashMap::new();
         let mut dependency_graph_set: HashSet<DependencyEdge> = HashSet::new();
         let mut direct_graph_ids: HashSet<String> = HashSet::new();
 
-        // 2a. Direct 1-hop relationships
-        if let Ok(related_tuples) = self.storage.get_related_artifacts(&primary_id_key) {
-            for (rel, art) in related_tuples {
+        // 2a. Direct 1-hop relationships using lightweight headers
+        let start_hop1 = std::time::Instant::now();
+        if let Ok(related_tuples) = self.storage.get_related_headers(&primary_id_key) {
+            for (rel, header) in related_tuples {
                 dependency_graph_set.insert(DependencyEdge {
                     source_id: rel.source_id.clone(),
                     target_id: rel.target_id.clone(),
                     relationship_type: rel.relationship_type.clone(),
                 });
-                direct_graph_ids.insert(art.id.clone());
-                direct_graph_ids.insert(art.source_id.clone());
-                let label = map_relationship_type(&rel.relationship_type, &art.kind);
-                self.add_candidate(&mut candidates_map, art, 10.0, Some(label), true);
+                direct_graph_ids.insert(header.id.clone());
+                direct_graph_ids.insert(header.source_id.clone());
+                let label = map_relationship_type(&rel.relationship_type, &header.kind);
+                self.add_candidate_header(&mut candidates_map, header, 10.0, Some(label), true);
             }
         }
 
-        // Also inspect embedded relationships inside primary_artifact
         if let Some(ref primary) = primary_artifact {
-            for rel in &primary.relationships {
-                dependency_graph_set.insert(DependencyEdge {
-                    source_id: rel.source_id.clone(),
-                    target_id: rel.target_id.clone(),
-                    relationship_type: rel.relationship_type.clone(),
-                });
-                direct_graph_ids.insert(rel.target_id.clone());
-                let label = map_relationship_type(&rel.relationship_type, &classify_id(&rel.target_id));
-                if let Ok(Some(art)) = self.storage.get_artifact_by_id(&rel.target_id) {
-                    self.add_candidate(&mut candidates_map, art, 10.0, Some(label), true);
+            let target_ids: Vec<String> = primary.relationships.iter().map(|r| r.target_id.clone()).collect();
+            if let Ok(headers) = self.storage.get_artifact_headers_by_ids(&target_ids) {
+                let mut header_map: HashMap<String, ArtifactHeader> = HashMap::new();
+                for h in headers {
+                    header_map.insert(h.id.clone(), h.clone());
+                    header_map.insert(h.source_id.clone(), h);
+                }
+                for rel in &primary.relationships {
+                    dependency_graph_set.insert(DependencyEdge {
+                        source_id: rel.source_id.clone(),
+                        target_id: rel.target_id.clone(),
+                        relationship_type: rel.relationship_type.clone(),
+                    });
+                    direct_graph_ids.insert(rel.target_id.clone());
+                    let label = map_relationship_type(&rel.relationship_type, &classify_id(&rel.target_id));
+                    if let Some(header) = header_map.get(&rel.target_id) {
+                        self.add_candidate_header(&mut candidates_map, header.clone(), 10.0, Some(label), true);
+                    }
                 }
             }
         }
+        let t_hop1 = start_hop1.elapsed().as_millis();
 
-        // 2b. 2-hop relationships (transitive connection expansion)
-        let initial_ids: Vec<String> = candidates_map.keys().cloned().collect();
-        for id in initial_ids {
-            if let Ok(hop2) = self.storage.get_related_artifacts(&id) {
-                for (rel, art) in hop2 {
+        // 2b. 2-hop relationships (transitive connection expansion if depth >= 2)
+        let start_hop2 = std::time::Instant::now();
+        if options.depth >= 2 {
+            let initial_ids: Vec<String> = candidates_map.keys().cloned().collect();
+            if let Ok(hop2) = self.storage.get_batch_related_headers(&initial_ids) {
+                for (rel, header) in hop2 {
                     dependency_graph_set.insert(DependencyEdge {
                         source_id: rel.source_id,
                         target_id: rel.target_id,
                         relationship_type: rel.relationship_type.clone(),
                     });
-                    direct_graph_ids.insert(art.id.clone());
-                    direct_graph_ids.insert(art.source_id.clone());
-                    let label = map_relationship_type(&rel.relationship_type, &art.kind);
-                    self.add_candidate(&mut candidates_map, art, 5.0, Some(label), true);
+                    direct_graph_ids.insert(header.id.clone());
+                    direct_graph_ids.insert(header.source_id.clone());
+                    let label = map_relationship_type(&rel.relationship_type, &header.kind);
+                    self.add_candidate_header(&mut candidates_map, header, 5.0, Some(label), true);
                 }
             }
         }
+        let t_hop2 = start_hop2.elapsed().as_millis();
 
-        // 2c. Query repository artifacts if repo is available
+        // 2c & 2d. Query repository headers & FTS search headers
+        let start_repo_fts = std::time::Instant::now();
         let active_repo = primary_artifact
             .as_ref()
             .and_then(|a| a.repository.as_deref())
             .or(primary_repo.as_deref());
 
+        let start_repo_only = std::time::Instant::now();
         if let Some(repo) = active_repo {
-            if let Ok(repo_arts) = self.storage.query_by_repository(repo, 30) {
-                for art in repo_arts {
-                    let is_direct = direct_graph_ids.contains(&art.id) || direct_graph_ids.contains(&art.source_id);
-                    let label = infer_label_by_kind(&art.kind);
-                    self.add_candidate(&mut candidates_map, art, 3.0, Some(label), is_direct);
+            if let Ok(repo_headers) = self.storage.query_headers_by_repository(repo, 30) {
+                for header in repo_headers {
+                    let is_direct = direct_graph_ids.contains(&header.id) || direct_graph_ids.contains(&header.source_id);
+                    let label = infer_label_by_kind(&header.kind);
+                    self.add_candidate_header(&mut candidates_map, header, 3.0, Some(label), is_direct);
                 }
             }
         }
+        let _t_repo_only = start_repo_only.elapsed().as_millis();
 
-        // 2d. Perform BM25 FTS search based on terms from primary artifact or target_id
+        let start_fts_only = std::time::Instant::now();
         if let Some(ref primary) = primary_artifact {
             let terms = extract_search_terms(&primary.title, &primary.tags);
             if !terms.is_empty() {
-                if let Ok(fts_results) = self.storage.search_fts(&terms, None, None, active_repo, 20) {
-                    for art in fts_results {
-                        let is_direct = direct_graph_ids.contains(&art.id) || direct_graph_ids.contains(&art.source_id);
+                if let Ok(fts_results) = self.storage.search_fts_headers(&terms, None, active_repo, 20) {
+                    for header in fts_results {
+                        let is_direct = direct_graph_ids.contains(&header.id) || direct_graph_ids.contains(&header.source_id);
                         let label = if is_direct {
-                            infer_label_by_kind(&art.kind)
+                            infer_label_by_kind(&header.kind)
                         } else {
                             "potentially related".to_string()
                         };
-                        self.add_candidate(&mut candidates_map, art, 2.0, Some(label), is_direct);
+                        self.add_candidate_header(&mut candidates_map, header, 2.0, Some(label), is_direct);
                     }
                 }
             }
         } else if !clean_target_id.is_empty() {
-            if let Ok(fts_results) = self.storage.search_fts(clean_target_id, None, None, None, 20) {
-                for art in fts_results {
-                    let is_direct = direct_graph_ids.contains(&art.id) || direct_graph_ids.contains(&art.source_id);
+            if let Ok(fts_results) = self.storage.search_fts_headers(clean_target_id, None, None, 20) {
+                for header in fts_results {
+                    let is_direct = direct_graph_ids.contains(&header.id) || direct_graph_ids.contains(&header.source_id);
                     let label = if is_direct {
-                        infer_label_by_kind(&art.kind)
+                        infer_label_by_kind(&header.kind)
                     } else {
                         "potentially related".to_string()
                     };
-                    self.add_candidate(&mut candidates_map, art, 2.0, Some(label), is_direct);
+                    self.add_candidate_header(&mut candidates_map, header, 2.0, Some(label), is_direct);
                 }
             }
         }
+        let _t_fts_only = start_fts_only.elapsed().as_millis();
 
-        // Remove primary_artifact itself from candidate set
         if let Some(ref primary) = primary_artifact {
             candidates_map.remove(&primary.id);
             candidates_map.remove(&primary.source_id);
         }
+        let t_repo_fts = start_repo_fts.elapsed().as_millis();
 
-        // 3. Classify and partition candidates into context categories
+        let total_candidate_headers = candidates_map.len();
+
+        // 3. ID-First Candidate Ranking & Category Selection
+        let start_ranking = std::time::Instant::now();
+        let mut candidate_entries: Vec<(ArtifactHeader, f64, String, bool)> = candidates_map
+            .into_values()
+            .map(|(header, mut score, label, is_direct)| {
+                if header.kind == ArtifactKind::Commit {
+                    score += score_commit_relevance(&header, clean_target_id, is_direct);
+                }
+                let rel_label = label.unwrap_or_else(|| {
+                    if is_direct {
+                        infer_label_by_kind(&header.kind)
+                    } else {
+                        "potentially related".to_string()
+                    }
+                });
+                (header, score, rel_label, is_direct)
+            })
+            .collect();
+
+        candidate_entries.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.0.updated_at.cmp(&a.0.updated_at))
+                .then_with(|| a.0.source_id.cmp(&b.0.source_id))
+        });
+
+        let recommended_reading = build_recommended_reading_headers(
+            &candidate_entries,
+            active_repo,
+            options.max_recommended,
+        );
+
+        let mut winning_headers: Vec<(ArtifactHeader, f64, String, bool)> = Vec::new();
+        let mut used_ids = HashSet::new();
+
+        let mut adr_count = 0;
+        let mut pr_count = 0;
+        let mut commit_count = 0;
+        let mut doc_count = 0;
+        let mut api_count = 0;
+        let mut history_count = 0;
+        let mut related_count = 0;
+
+        for (header, score, rel_label, is_direct) in candidate_entries {
+            if used_ids.contains(&header.id) || used_ids.contains(&header.source_id) {
+                continue;
+            }
+
+            let is_adr = is_architecture_decision_header(&header);
+            let is_api = is_api_header(&header);
+            let is_pr = matches!(header.kind, ArtifactKind::PullRequest | ArtifactKind::PullRequestReview | ArtifactKind::ReviewComment);
+            let is_commit = matches!(header.kind, ArtifactKind::Commit);
+            let is_doc = matches!(header.kind, ArtifactKind::Document | ArtifactKind::Specification) || header.provider == "confluence";
+            let is_history = is_closed_or_historical_header(&header);
+
+            let mut selected = false;
+
+            if is_adr && adr_count < options.max_adrs {
+                adr_count += 1;
+                selected = true;
+            } else if is_api && api_count < options.max_apis {
+                api_count += 1;
+                selected = true;
+            } else if is_pr && pr_count < options.max_prs {
+                pr_count += 1;
+                selected = true;
+            } else if is_commit && commit_count < options.max_commits {
+                commit_count += 1;
+                selected = true;
+            } else if is_doc && doc_count < options.max_docs {
+                doc_count += 1;
+                selected = true;
+            } else if is_history && history_count < options.max_history {
+                history_count += 1;
+                selected = true;
+            } else if related_count < options.max_related {
+                related_count += 1;
+                selected = true;
+            }
+
+            if selected {
+                used_ids.insert(header.id.clone());
+                used_ids.insert(header.source_id.clone());
+                winning_headers.push((header, score, rel_label, is_direct));
+            }
+        }
+        let t_ranking = start_ranking.elapsed().as_millis();
+
+        // 4. Batch Hydrate ONLY Winning Artifacts
+        let start_hydration = std::time::Instant::now();
+        let winning_ids: Vec<String> = winning_headers.iter().map(|(h, _, _, _)| h.id.clone()).collect();
+        let hydrated_list = self.storage.get_artifacts_by_ids(&winning_ids)?;
+        let hydrated_map: HashMap<String, KnowledgeArtifact> = hydrated_list
+            .into_iter()
+            .map(|a| (a.id.clone(), a))
+            .collect();
+        let t_hydration = start_hydration.elapsed().as_millis();
+
+        let total_hydrated = hydrated_map.len();
+
+        // 5. Construct LabeledArtifact output lists from hydrated winners
         let mut adr_list = Vec::new();
         let mut pr_list = Vec::new();
         let mut commit_list = Vec::new();
@@ -329,59 +469,29 @@ impl<'a> ContextBuilder<'a> {
             }
         }
 
-        // Sort candidates deterministically: score desc, updated_at desc, source_id asc
-        let mut candidate_entries: Vec<(KnowledgeArtifact, f64, String, bool)> = candidates_map
-            .into_values()
-            .map(|(art, score, label, is_direct)| {
-                let rel_label = label.unwrap_or_else(|| {
-                    if is_direct {
-                        infer_label_by_kind(&art.kind)
-                    } else {
-                        "potentially related".to_string()
-                    }
-                });
-                (art, score, rel_label, is_direct)
-            })
-            .collect();
-
-        candidate_entries.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| b.0.updated_at.cmp(&a.0.updated_at))
-                .then_with(|| a.0.source_id.cmp(&b.0.source_id))
-        });
-
-        // Calculate Recommended Reading prior to category deduction
-        let recommended_reading = build_recommended_reading(
-            &candidate_entries,
-            active_repo,
-            options.max_recommended,
-        );
-
-        let mut used_ids = HashSet::new();
-
-        for (art, score, rel_label, is_direct) in candidate_entries {
-            if let Some(ref r) = art.repository {
+        for (header, score, rel_label, is_direct) in winning_headers {
+            if let Some(ref r) = header.repository {
                 if !r.is_empty() {
                     affected_repos_set.insert(r.clone());
                 }
             }
 
-            if used_ids.contains(&art.id) || used_ids.contains(&art.source_id) {
-                continue;
-            }
+            let artifact = match hydrated_map.get(&header.id) {
+                Some(a) => a.clone(),
+                None => continue,
+            };
 
-            let is_adr = is_architecture_decision(&art);
-            let is_api = is_api_artifact(&art);
-            let is_pr = matches!(art.kind, ArtifactKind::PullRequest | ArtifactKind::PullRequestReview | ArtifactKind::ReviewComment);
-            let is_commit = matches!(art.kind, ArtifactKind::Commit);
-            let is_doc = matches!(art.kind, ArtifactKind::Document | ArtifactKind::Specification) || art.provider == "confluence";
-            let is_history = is_closed_or_historical(&art);
+            let is_adr = is_architecture_decision(&artifact);
+            let is_api = is_api_artifact(&artifact);
+            let is_pr = matches!(artifact.kind, ArtifactKind::PullRequest | ArtifactKind::PullRequestReview | ArtifactKind::ReviewComment);
+            let is_commit = matches!(artifact.kind, ArtifactKind::Commit);
+            let is_doc = matches!(artifact.kind, ArtifactKind::Document | ArtifactKind::Specification) || artifact.provider == "confluence";
+            let is_history = is_closed_or_historical(&artifact);
 
-            let rel_category = map_relationship_category(&rel_label, &art.kind, is_direct);
+            let rel_category = map_relationship_category(&rel_label, &artifact.kind, is_direct);
 
             let labeled = LabeledArtifact {
-                artifact: art.clone(),
+                artifact,
                 relationship_label: rel_label,
                 relationship_category: rel_category,
                 score,
@@ -389,36 +499,23 @@ impl<'a> ContextBuilder<'a> {
             };
 
             if is_adr && adr_list.len() < options.max_adrs {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 adr_list.push(labeled);
             } else if is_api && api_list.len() < options.max_apis {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 api_list.push(labeled);
             } else if is_pr && pr_list.len() < options.max_prs {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 pr_list.push(labeled);
             } else if is_commit && commit_list.len() < options.max_commits {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 commit_list.push(labeled);
             } else if is_doc && doc_list.len() < options.max_docs {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 doc_list.push(labeled);
             } else if is_history && history_list.len() < options.max_history {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 history_list.push(labeled);
             } else if other_related.len() < options.max_related {
-                used_ids.insert(art.id.clone());
-                used_ids.insert(art.source_id.clone());
                 other_related.push(labeled);
             }
         }
 
+        let start_assembly = std::time::Instant::now();
         let mut affected_repositories: Vec<String> = affected_repos_set.into_iter().collect();
         affected_repositories.sort();
 
@@ -429,7 +526,6 @@ impl<'a> ContextBuilder<'a> {
                 .then_with(|| a.relationship_type.cmp(&b.relationship_type))
         });
 
-        // 4. Calculate Completeness & Readiness
         let completeness = compute_completeness(
             primary_artifact.is_some(),
             &affected_repositories,
@@ -447,7 +543,6 @@ impl<'a> ContextBuilder<'a> {
             primary_artifact.is_some(),
         );
 
-        // 5. Generate implementation hints
         let hints = generate_implementation_hints(
             &primary_artifact,
             &adr_list,
@@ -457,7 +552,6 @@ impl<'a> ContextBuilder<'a> {
             &recommended_reading,
         );
 
-        // 6. Generate suggested next actions
         let suggested_next_actions = generate_next_actions(
             clean_target_id,
             &title,
@@ -466,14 +560,12 @@ impl<'a> ContextBuilder<'a> {
             active_repo,
         );
 
-        // 7. Extract source metadata
         let source_info = build_source_info(
             &primary_artifact,
             active_repo,
             clean_target_id,
         );
 
-        // 8. Generate briefing assessment summary
         let summary = build_engineering_assessment(
             &completeness,
             clean_target_id,
@@ -499,6 +591,25 @@ impl<'a> ContextBuilder<'a> {
             &affected_repositories,
             &adr_list,
         ));
+        let t_assembly = start_assembly.elapsed().as_millis();
+        let total_ms = start_total.elapsed().as_millis();
+
+        let telemetry = if options.profile {
+            Some(ContextTelemetry {
+                primary_resolution_ms: t_primary,
+                hop1_traversal_ms: t_hop1,
+                hop2_traversal_ms: t_hop2,
+                repo_fts_search_ms: t_repo_fts,
+                candidate_ranking_ms: t_ranking,
+                artifact_hydration_ms: t_hydration,
+                prompt_assembly_ms: t_assembly,
+                total_ms,
+                candidate_headers_count: total_candidate_headers,
+                hydrated_artifacts_count: total_hydrated,
+            })
+        } else {
+            None
+        };
 
         Ok(ContextPackage {
             target_kind: normalized_kind,
@@ -525,7 +636,26 @@ impl<'a> ContextBuilder<'a> {
             ai_briefing,
             source_info,
             summary,
+            telemetry,
         })
+    }
+
+    fn add_candidate_header(
+        &self,
+        map: &mut HashMap<String, (ArtifactHeader, f64, Option<String>, bool)>,
+        header: ArtifactHeader,
+        weight: f64,
+        label: Option<String>,
+        is_direct: bool,
+    ) {
+        let entry = map.entry(header.id.clone()).or_insert_with(|| (header.clone(), 0.0, label.clone(), is_direct));
+        entry.1 += weight;
+        if is_direct {
+            entry.3 = true;
+        }
+        if entry.2.is_none() && label.is_some() {
+            entry.2 = label;
+        }
     }
 
     fn resolve_primary(
@@ -583,24 +713,6 @@ impl<'a> ContextBuilder<'a> {
         }
 
         Ok((None, None))
-    }
-
-    fn add_candidate(
-        &self,
-        map: &mut HashMap<String, (KnowledgeArtifact, f64, Option<String>, bool)>,
-        art: KnowledgeArtifact,
-        weight: f64,
-        label: Option<String>,
-        is_direct: bool,
-    ) {
-        let entry = map.entry(art.id.clone()).or_insert_with(|| (art.clone(), 0.0, label.clone(), is_direct));
-        entry.1 += weight;
-        if is_direct {
-            entry.3 = true;
-        }
-        if entry.2.is_none() && label.is_some() {
-            entry.2 = label;
-        }
     }
 }
 
@@ -675,6 +787,127 @@ fn extract_status(art: &KnowledgeArtifact) -> String {
     "Done".to_string()
 }
 
+fn is_architecture_decision_header(header: &ArtifactHeader) -> bool {
+    let lower_id = header.source_id.to_lowercase();
+    let lower_title = header.title.to_lowercase();
+    if lower_id.starts_with("adr-") || lower_id.contains("adr") || lower_title.contains("adr") {
+        return true;
+    }
+    if matches!(header.kind, ArtifactKind::Design | ArtifactKind::Specification) {
+        return true;
+    }
+    if lower_title.contains("architecture") || lower_title.contains("design decision") {
+        return true;
+    }
+    false
+}
+
+fn is_api_header(header: &ArtifactHeader) -> bool {
+    if matches!(header.kind, ArtifactKind::Component) {
+        return true;
+    }
+    let lower_title = header.title.to_lowercase();
+    let lower_id = header.source_id.to_lowercase();
+    if lower_title.contains("api") || lower_id.contains("api") || lower_title.contains("endpoint") || lower_title.contains("openapi") || lower_title.contains("graphql") {
+        return true;
+    }
+    false
+}
+
+fn is_closed_or_historical_header(header: &ArtifactHeader) -> bool {
+    if let Some(status) = header.metadata.get("status").and_then(|v| v.as_str()) {
+        let s = status.to_lowercase();
+        if s == "closed" || s == "merged" || s == "done" || s == "resolved" {
+            return true;
+        }
+    }
+    if let Some(state) = header.metadata.get("state").and_then(|v| v.as_str()) {
+        let s = state.to_lowercase();
+        if s == "closed" || s == "merged" || s == "done" || s == "resolved" {
+            return true;
+        }
+    }
+    matches!(header.kind, ArtifactKind::Commit | ArtifactKind::Release)
+}
+
+fn build_recommended_reading_headers(
+    candidates: &[(ArtifactHeader, f64, String, bool)],
+    active_repo: Option<&str>,
+    limit: usize,
+) -> Vec<RecommendedItem> {
+    let mut scored_items: Vec<(RecommendedItem, f64)> = Vec::new();
+
+    for (header, base_score, label, is_direct) in candidates {
+        let mut r_score = *base_score;
+        let mut reason = format!("Context reference ({})", label);
+
+        if is_architecture_decision_header(header) {
+            r_score += 50.0;
+            reason = "Architecture Decision (ADR) guideline".to_string();
+        } else if matches!(header.kind, ArtifactKind::Design | ArtifactKind::Specification) {
+            r_score += 45.0;
+            reason = "Design Specification Document".to_string();
+        } else if is_api_header(header) {
+            r_score += 40.0;
+            reason = "API Contract Specification".to_string();
+        } else if matches!(header.kind, ArtifactKind::PullRequest | ArtifactKind::PullRequestReview) {
+            r_score += 30.0;
+            reason = "Prior Implementation PR".to_string();
+        } else if matches!(header.kind, ArtifactKind::Ticket | ArtifactKind::Issue) {
+            r_score += 20.0;
+            reason = "Related Issue / Ticket".to_string();
+        } else if matches!(header.kind, ArtifactKind::Commit) {
+            r_score += 15.0;
+            reason = "Related Commit History".to_string();
+        }
+
+        if *is_direct {
+            r_score += 20.0;
+        }
+
+        if let Some(repo) = active_repo {
+            if header.repository.as_deref() == Some(repo) {
+                r_score += 10.0;
+            }
+        }
+
+        let item = RecommendedItem {
+            id: header.id.clone(),
+            source_id: header.source_id.clone(),
+            title: header.title.clone(),
+            kind: header.kind.to_string(),
+            relationship_label: label.clone(),
+            score: r_score,
+            reason,
+        };
+
+        scored_items.push((item, r_score));
+    }
+
+    scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored_items.into_iter().map(|(item, _)| item).take(limit).collect()
+}
+
+pub fn score_commit_relevance(header: &ArtifactHeader, target_id: &str, is_direct: bool) -> f64 {
+    let mut score = if is_direct { 20.0 } else { 5.0 };
+    let lower_title = header.title.to_lowercase();
+    let lower_target = target_id.to_lowercase();
+
+    if !lower_target.is_empty() && lower_title.contains(&lower_target) {
+        score += 100.0;
+    }
+    if header.metadata.get("is_merge").and_then(|v| v.as_bool()).unwrap_or(false) {
+        score += 40.0;
+    }
+    if lower_title.contains("merge pull request") || lower_title.contains("merge pr") {
+        score += 30.0;
+    }
+    if lower_title.contains("bump") || lower_title.contains("dependabot") || lower_title.contains("deps") {
+        score -= 80.0;
+    }
+    score
+}
+
 fn is_architecture_decision(art: &KnowledgeArtifact) -> bool {
     let lower_id = art.source_id.to_lowercase();
     let lower_title = art.title.to_lowercase();
@@ -743,80 +976,6 @@ fn extract_search_terms(title: &str, tags: &[String]) -> String {
     }
     words.dedup();
     words.join(" ")
-}
-
-fn build_recommended_reading(
-    candidates: &[(KnowledgeArtifact, f64, String, bool)],
-    active_repo: Option<&str>,
-    limit: usize,
-) -> Vec<RecommendedItem> {
-    let mut scored_items: Vec<(RecommendedItem, f64)> = Vec::new();
-
-    for (art, base_score, label, is_direct) in candidates {
-        // Priority order requested:
-        // 1. Architecture Decisions (ADR)
-        // 2. Design Documents
-        // 3. API Specifications
-        // 4. Previous Pull Requests
-        // 5. Previous Issues / Tickets
-        // 6. Related Commits
-        let mut r_score = *base_score;
-        let mut reason = format!("Context reference ({})", label);
-
-        if is_architecture_decision(art) {
-            r_score += 50.0;
-            reason = "Architecture Decision (ADR) guideline".to_string();
-        } else if matches!(art.kind, ArtifactKind::Design | ArtifactKind::Specification) {
-            r_score += 45.0;
-            reason = "Design Specification Document".to_string();
-        } else if is_api_artifact(art) {
-            r_score += 40.0;
-            reason = "API Contract Specification".to_string();
-        } else if matches!(art.kind, ArtifactKind::PullRequest | ArtifactKind::PullRequestReview) {
-            r_score += 30.0;
-            reason = "Prior Implementation PR".to_string();
-        } else if matches!(art.kind, ArtifactKind::Ticket | ArtifactKind::Issue) {
-            r_score += 20.0;
-            reason = "Related Issue / Ticket".to_string();
-        } else if matches!(art.kind, ArtifactKind::Commit) {
-            r_score += 15.0;
-            reason = "Related Commit History".to_string();
-        }
-
-        if *is_direct {
-            r_score += 20.0;
-        }
-
-        if let Some(repo) = active_repo {
-            if art.repository.as_deref() == Some(repo) {
-                r_score += 10.0;
-            }
-        }
-
-        let item = RecommendedItem {
-            id: art.id.clone(),
-            source_id: art.source_id.clone(),
-            title: art.title.clone(),
-            kind: art.kind.to_string(),
-            relationship_label: label.clone(),
-            score: r_score,
-            reason,
-        };
-
-        scored_items.push((item, r_score));
-    }
-
-    scored_items.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.0.source_id.cmp(&b.0.source_id))
-    });
-
-    scored_items
-        .into_iter()
-        .take(limit)
-        .map(|(item, _)| item)
-        .collect()
 }
 
 fn compute_completeness(

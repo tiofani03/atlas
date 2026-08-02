@@ -43,6 +43,10 @@ pub fn create_router(state: AppState) -> Router {
             "/api/connectors/validate",
             post(connectors::validate_credentials),
         )
+        .route(
+            "/api/connectors/delete",
+            post(connectors::delete_connector),
+        )
         .route("/api/sync", post(sync::trigger_sync))
         .route("/api/sync/status", get(sync::get_sync_status))
         .route("/api/search", get(search::search_objects))

@@ -13,6 +13,20 @@ pub struct StorageStats {
     pub db_size_bytes: u64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ArtifactHeader {
+    pub id: String,
+    pub kind: ArtifactKind,
+    pub title: String,
+    pub provider: String,
+    pub source_id: String,
+    pub source_url: String,
+    pub repository: Option<String>,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub metadata: serde_json::Value,
+}
+
 #[derive(Clone)]
 pub struct Storage {
     pub path: PathBuf,
@@ -91,10 +105,16 @@ impl Storage {
                 metadata TEXT NOT NULL
             );
 
+            CREATE INDEX IF NOT EXISTS idx_ka_source_id ON knowledge_artifacts(source_id);
             CREATE INDEX IF NOT EXISTS idx_ka_provider_source ON knowledge_artifacts(provider, source_id);
             CREATE INDEX IF NOT EXISTS idx_ka_kind ON knowledge_artifacts(kind);
             CREATE INDEX IF NOT EXISTS idx_ka_repository ON knowledge_artifacts(repository);
             CREATE INDEX IF NOT EXISTS idx_ka_updated_at ON knowledge_artifacts(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_ka_kind_updated ON knowledge_artifacts(kind, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_ka_repo_kind ON knowledge_artifacts(repository, kind);
+            CREATE INDEX IF NOT EXISTS idx_ka_repo_updated ON knowledge_artifacts(repository, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_ka_provider_updated ON knowledge_artifacts(provider, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_ka_kind_source ON knowledge_artifacts(kind, source_id);
 
             CREATE TABLE IF NOT EXISTS artifact_relationships (
                 source_id TEXT NOT NULL,
@@ -105,6 +125,8 @@ impl Storage {
 
             CREATE INDEX IF NOT EXISTS idx_rel_source ON artifact_relationships(source_id);
             CREATE INDEX IF NOT EXISTS idx_rel_target ON artifact_relationships(target_id);
+            CREATE INDEX IF NOT EXISTS idx_rel_src_type ON artifact_relationships(source_id, relationship_type);
+            CREATE INDEX IF NOT EXISTS idx_rel_tgt_type ON artifact_relationships(target_id, relationship_type);
 
             CREATE TABLE IF NOT EXISTS connectors_state (
                 connector_id TEXT PRIMARY KEY NOT NULL,
@@ -155,6 +177,14 @@ impl Storage {
             CREATE INDEX IF NOT EXISTS idx_cf_file_repo ON commit_files(repository, file_path);
             CREATE INDEX IF NOT EXISTS idx_cf_commit ON commit_files(commit_sha);
 
+            CREATE TABLE IF NOT EXISTS git_ref_watermarks (
+                connector_id TEXT NOT NULL,
+                ref_name TEXT NOT NULL,
+                commit_sha TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (connector_id, ref_name)
+            );
+
             DROP TRIGGER IF EXISTS ka_ad;
             DROP TRIGGER IF EXISTS ka_au;
 
@@ -174,7 +204,6 @@ impl Storage {
             END;
             ",
         )?;
-
         Ok(())
     }
 
@@ -186,9 +215,105 @@ impl Storage {
              DELETE FROM artifact_relationships;
              DELETE FROM connectors_state;
              DELETE FROM knowledge_fts;
+             DELETE FROM git_ref_watermarks;
+             DELETE FROM git_index_commits;
+             DELETE FROM commit_files;
              PRAGMA wal_checkpoint(TRUNCATE);
              VACUUM;
              PRAGMA wal_checkpoint(TRUNCATE);",
+        )?;
+        Ok(())
+    }
+
+    /// Delete all synchronized knowledge artifacts, relationships, watermarks, and state for a specific connector ID
+    pub fn clear_connector_data(
+        &self,
+        connector_id: &str,
+        provider: Option<&str>,
+        repos: &[String],
+    ) -> Result<usize> {
+        let conn = self.get_connection()?;
+
+        conn.execute(
+            "DELETE FROM connectors_state WHERE connector_id = ?1",
+            params![connector_id],
+        )?;
+        conn.execute(
+            "DELETE FROM git_ref_watermarks WHERE connector_id = ?1",
+            params![connector_id],
+        )?;
+
+        let prov_str = provider.unwrap_or(connector_id);
+        let prefix = format!("{}:", connector_id);
+
+        let mut query = String::from(
+            "DELETE FROM knowledge_artifacts WHERE provider = ?1 OR provider = ?2 OR source_id LIKE ?3 || '%'"
+        );
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![
+            Box::new(connector_id.to_string()),
+            Box::new(prov_str.to_string()),
+            Box::new(prefix),
+        ];
+
+        if !repos.is_empty() {
+            query.push_str(" OR repository IN (");
+            for (idx, r) in repos.iter().enumerate() {
+                if idx > 0 {
+                    query.push_str(", ");
+                }
+                query.push_str(&format!("?{}", params_vec.len() + 1));
+                params_vec.push(Box::new(r.clone()));
+            }
+            query.push(')');
+        }
+
+        let deleted_count = conn.execute(&query, rusqlite::params_from_iter(params_vec))?;
+
+        // Cleanup orphaned relationships, commits, and commit_files
+        let _ = conn.execute(
+            "DELETE FROM artifact_relationships 
+             WHERE source_id NOT IN (SELECT id FROM knowledge_artifacts) 
+               AND source_id NOT IN (SELECT source_id FROM knowledge_artifacts)",
+            [],
+        );
+        let _ = conn.execute(
+            "DELETE FROM artifact_relationships 
+             WHERE target_id NOT IN (SELECT id FROM knowledge_artifacts) 
+               AND target_id NOT IN (SELECT source_id FROM knowledge_artifacts)",
+            [],
+        );
+        let _ = conn.execute(
+            "DELETE FROM git_index_commits 
+             WHERE sha NOT IN (SELECT source_id FROM knowledge_artifacts WHERE kind = 'commit')",
+            [],
+        );
+        let _ = conn.execute(
+            "DELETE FROM commit_files 
+             WHERE commit_sha NOT IN (SELECT source_id FROM knowledge_artifacts WHERE kind = 'commit')",
+            [],
+        );
+
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+
+        Ok(deleted_count)
+    }
+
+    pub fn get_ref_watermark(&self, connector_id: &str, ref_name: &str) -> Result<Option<String>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT commit_sha FROM git_ref_watermarks WHERE connector_id = ?1 AND ref_name = ?2")?;
+        let sha: Option<String> = stmt.query_row(params![connector_id, ref_name], |row| row.get(0)).optional()?;
+        Ok(sha)
+    }
+
+    pub fn update_ref_watermark(&self, connector_id: &str, ref_name: &str, commit_sha: &str) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO git_ref_watermarks (connector_id, ref_name, commit_sha, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(connector_id, ref_name) DO UPDATE SET
+                 commit_sha = excluded.commit_sha,
+                 updated_at = excluded.updated_at",
+            params![connector_id, ref_name, commit_sha, Utc::now().to_rfc3339()],
         )?;
         Ok(())
     }
@@ -202,94 +327,52 @@ impl Storage {
         Ok(checksum)
     }
 
-    pub fn upsert_artifact(&self, artifact: &KnowledgeArtifact) -> Result<()> {
-        let conn = self.get_connection()?;
-        let tags_json = serde_json::to_string(&artifact.tags)?;
-        let rels_json = serde_json::to_string(&artifact.relationships)?;
-        let meta_json = serde_json::to_string(&artifact.metadata)?;
-        let created_at_str = artifact.created_at.map(|dt| dt.to_rfc3339());
+    pub fn upsert_artifacts_batch(&self, artifacts: &[KnowledgeArtifact]) -> Result<(usize, usize, usize)> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
 
-        conn.execute(
-            "INSERT INTO knowledge_artifacts (
-                id, kind, title, summary, body, provider, source_id, source_url,
-                repository, tags, relationships, created_at, updated_at, synced_at,
-                checksum, metadata
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
-            ON CONFLICT(id) DO UPDATE SET
-                kind = excluded.kind,
-                title = excluded.title,
-                summary = excluded.summary,
-                body = excluded.body,
-                provider = excluded.provider,
-                source_id = excluded.source_id,
-                source_url = excluded.source_url,
-                repository = excluded.repository,
-                tags = excluded.tags,
-                relationships = excluded.relationships,
-                created_at = excluded.created_at,
-                updated_at = excluded.updated_at,
-                synced_at = excluded.synced_at,
-                checksum = excluded.checksum,
-                metadata = excluded.metadata
-            ",
-            params![
-                artifact.id,
-                artifact.kind.to_string(),
-                artifact.title,
-                artifact.summary,
-                artifact.body,
-                artifact.provider,
-                artifact.source_id,
-                artifact.source_url,
-                artifact.repository,
-                tags_json,
-                rels_json,
-                created_at_str,
-                artifact.updated_at.to_rfc3339(),
-                artifact.synced_at.to_rfc3339(),
-                artifact.checksum,
-                meta_json,
-            ],
-        )?;
+        let mut inserted = 0;
+        let mut updated = 0;
+        let mut skipped = 0;
 
-        // Update artifact_relationships graph table
-        if artifact.kind != ArtifactKind::Release {
-            conn.execute(
+        {
+            let mut check_stmt = tx.prepare_cached("SELECT checksum FROM knowledge_artifacts WHERE id = ?1")?;
+            let mut insert_ka_stmt = tx.prepare_cached(
+                "INSERT INTO knowledge_artifacts (
+                    id, kind, title, summary, body, provider, source_id, source_url,
+                    repository, tags, relationships, created_at, updated_at, synced_at,
+                    checksum, metadata
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                ON CONFLICT(id) DO UPDATE SET
+                    kind = excluded.kind,
+                    title = excluded.title,
+                    summary = excluded.summary,
+                    body = excluded.body,
+                    provider = excluded.provider,
+                    source_id = excluded.source_id,
+                    source_url = excluded.source_url,
+                    repository = excluded.repository,
+                    tags = excluded.tags,
+                    relationships = excluded.relationships,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at,
+                    synced_at = excluded.synced_at,
+                    checksum = excluded.checksum,
+                    metadata = excluded.metadata",
+            )?;
+
+            let mut del_rel_stmt = tx.prepare_cached(
                 "DELETE FROM artifact_relationships WHERE (source_id = ?1 OR source_id = ?2) AND relationship_type != 'released_in'",
-                params![artifact.id, artifact.source_id],
             )?;
-        } else {
-            conn.execute(
+            let mut del_rel_release_stmt = tx.prepare_cached(
                 "DELETE FROM artifact_relationships WHERE source_id = ?1 OR source_id = ?2",
-                params![artifact.id, artifact.source_id],
             )?;
-        }
-
-        let auto_rels = Self::extract_automatic_linking_relationships(artifact);
-
-        for rel in artifact.relationships.iter().chain(auto_rels.iter()) {
-            if rel.source_id != rel.target_id {
-                conn.execute(
-                    "INSERT INTO artifact_relationships (source_id, target_id, relationship_type)
-                     VALUES (?1, ?2, ?3)
-                     ON CONFLICT(source_id, target_id, relationship_type) DO NOTHING",
-                    params![rel.source_id, rel.target_id, rel.relationship_type],
-                )?;
-            }
-        }
-
-        if artifact.kind == ArtifactKind::Commit {
-            let sha = &artifact.source_id;
-            let repo = artifact.repository.as_deref().unwrap_or("");
-            let author_name = artifact.metadata.get("author_name").and_then(|v| v.as_str()).unwrap_or("");
-            let author_email = artifact.metadata.get("author_email").and_then(|v| v.as_str()).unwrap_or("");
-            let authored_at = artifact.created_at.map(|dt| dt.to_rfc3339()).unwrap_or_default();
-            let message = &artifact.title;
-            let is_merge = if artifact.metadata.get("is_merge").and_then(|v| v.as_bool()).unwrap_or(false) { 1 } else { 0 };
-            let parents_str = artifact.metadata.get("parents").map(|v| v.to_string()).unwrap_or_else(|| "[]".to_string());
-            let patch_id = artifact.metadata.get("patch_id").and_then(|v| v.as_str());
-
-            conn.execute(
+            let mut ins_rel_stmt = tx.prepare_cached(
+                "INSERT INTO artifact_relationships (source_id, target_id, relationship_type)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(source_id, target_id, relationship_type) DO NOTHING",
+            )?;
+            let mut ins_commit_stmt = tx.prepare_cached(
                 "INSERT INTO git_index_commits (
                     sha, repository, author_name, author_email, authored_at, message, is_merge, parents, patch_id
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -301,35 +384,106 @@ impl Storage {
                     message = excluded.message,
                     is_merge = excluded.is_merge,
                     parents = excluded.parents,
-                    patch_id = excluded.patch_id
-                ",
-                params![sha, repo, author_name, author_email, authored_at, message, is_merge, parents_str, patch_id],
+                    patch_id = excluded.patch_id",
+            )?;
+            let mut ins_commit_file_stmt = tx.prepare_cached(
+                "INSERT INTO commit_files (
+                    commit_sha, repository, file_path, change_type, insertions, deletions
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                ON CONFLICT(commit_sha, file_path) DO UPDATE SET
+                    change_type = excluded.change_type,
+                    insertions = excluded.insertions,
+                    deletions = excluded.deletions",
             )?;
 
-            if let Some(files) = artifact.metadata.get("files").and_then(|v| v.as_array()) {
-                for f in files {
-                    let file_path = f.get("filename").or_else(|| f.get("path")).and_then(|v| v.as_str()).unwrap_or("");
-                    if !file_path.is_empty() {
-                        let change_type = f.get("status").and_then(|v| v.as_str()).unwrap_or("MODIFIED");
-                        let additions = f.get("additions").and_then(|v| v.as_i64()).unwrap_or(0);
-                        let deletions = f.get("deletions").and_then(|v| v.as_i64()).unwrap_or(0);
+            for artifact in artifacts {
+                let existing_checksum: Option<String> = check_stmt
+                    .query_row(params![&artifact.id], |row| row.get(0))
+                    .optional()?;
 
-                        conn.execute(
-                            "INSERT INTO commit_files (
-                                commit_sha, repository, file_path, change_type, insertions, deletions
-                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                            ON CONFLICT(commit_sha, file_path) DO UPDATE SET
-                                change_type = excluded.change_type,
-                                insertions = excluded.insertions,
-                                deletions = excluded.deletions
-                            ",
-                            params![sha, repo, file_path, change_type, additions, deletions],
-                        )?;
+                if let Some(ref cs) = existing_checksum {
+                    if cs == &artifact.checksum {
+                        skipped += 1;
+                        continue;
+                    }
+                    updated += 1;
+                } else {
+                    inserted += 1;
+                }
+
+                let tags_json = serde_json::to_string(&artifact.tags)?;
+                let rels_json = serde_json::to_string(&artifact.relationships)?;
+                let meta_json = serde_json::to_string(&artifact.metadata)?;
+                let created_at_str = artifact.created_at.map(|dt| dt.to_rfc3339());
+
+                insert_ka_stmt.execute(params![
+                    artifact.id,
+                    artifact.kind.to_string(),
+                    artifact.title,
+                    artifact.summary,
+                    artifact.body,
+                    artifact.provider,
+                    artifact.source_id,
+                    artifact.source_url,
+                    artifact.repository,
+                    tags_json,
+                    rels_json,
+                    created_at_str,
+                    artifact.updated_at.to_rfc3339(),
+                    artifact.synced_at.to_rfc3339(),
+                    artifact.checksum,
+                    meta_json,
+                ])?;
+
+                if artifact.kind != ArtifactKind::Release {
+                    del_rel_stmt.execute(params![artifact.id, artifact.source_id])?;
+                } else {
+                    del_rel_release_stmt.execute(params![artifact.id, artifact.source_id])?;
+                }
+
+                let auto_rels = Self::extract_automatic_linking_relationships(artifact);
+
+                for rel in artifact.relationships.iter().chain(auto_rels.iter()) {
+                    if rel.source_id != rel.target_id {
+                        ins_rel_stmt.execute(params![rel.source_id, rel.target_id, rel.relationship_type])?;
+                    }
+                }
+
+                if artifact.kind == ArtifactKind::Commit {
+                    let sha = &artifact.source_id;
+                    let repo = artifact.repository.as_deref().unwrap_or("");
+                    let author_name = artifact.metadata.get("author_name").and_then(|v| v.as_str()).unwrap_or("");
+                    let author_email = artifact.metadata.get("author_email").and_then(|v| v.as_str()).unwrap_or("");
+                    let authored_at = artifact.created_at.map(|dt| dt.to_rfc3339()).unwrap_or_default();
+                    let message = &artifact.title;
+                    let is_merge = if artifact.metadata.get("is_merge").and_then(|v| v.as_bool()).unwrap_or(false) { 1 } else { 0 };
+                    let parents_str = artifact.metadata.get("parents").map(|v| v.to_string()).unwrap_or_else(|| "[]".to_string());
+                    let patch_id = artifact.metadata.get("patch_id").and_then(|v| v.as_str());
+
+                    ins_commit_stmt.execute(params![sha, repo, author_name, author_email, authored_at, message, is_merge, parents_str, patch_id])?;
+
+                    if let Some(files) = artifact.metadata.get("files").and_then(|v| v.as_array()) {
+                        for f in files {
+                            let file_path = f.get("filename").or_else(|| f.get("path")).and_then(|v| v.as_str()).unwrap_or("");
+                            if !file_path.is_empty() {
+                                let change_type = f.get("status").and_then(|v| v.as_str()).unwrap_or("MODIFIED");
+                                let additions = f.get("additions").and_then(|v| v.as_i64()).unwrap_or(0);
+                                let deletions = f.get("deletions").and_then(|v| v.as_i64()).unwrap_or(0);
+
+                                ins_commit_file_stmt.execute(params![sha, repo, file_path, change_type, additions, deletions])?;
+                            }
+                        }
                     }
                 }
             }
         }
 
+        tx.commit()?;
+        Ok((inserted, updated, skipped))
+    }
+
+    pub fn upsert_artifact(&self, artifact: &KnowledgeArtifact) -> Result<()> {
+        let _ = self.upsert_artifacts_batch(std::slice::from_ref(artifact))?;
         Ok(())
     }
 
@@ -554,15 +708,47 @@ impl Storage {
 
     pub fn get_artifact_by_id(&self, id_or_source_id: &str) -> Result<Option<KnowledgeArtifact>> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare(
+
+        // Fast path 1: exact match on primary key (id)
+        let mut stmt_id = conn.prepare(
             "SELECT id, kind, title, summary, body, provider, source_id, source_url,
                     repository, tags, relationships, created_at, updated_at, synced_at,
                     checksum, metadata
              FROM knowledge_artifacts
-             WHERE id = ?1 OR source_id = ?1",
+             WHERE id = ?1",
         )?;
-        let obj = stmt.query_row(params![id_or_source_id], Self::row_to_artifact).optional()?;
-        Ok(obj)
+        if let Some(a) = stmt_id.query_row(params![id_or_source_id], Self::row_to_artifact).optional()? {
+            return Ok(Some(a));
+        }
+
+        // Fast path 2: exact match on source_id (indexed)
+        let mut stmt_src = conn.prepare(
+            "SELECT id, kind, title, summary, body, provider, source_id, source_url,
+                    repository, tags, relationships, created_at, updated_at, synced_at,
+                    checksum, metadata
+             FROM knowledge_artifacts
+             WHERE source_id = ?1",
+        )?;
+        if let Some(a) = stmt_src.query_row(params![id_or_source_id], Self::row_to_artifact).optional()? {
+            return Ok(Some(a));
+        }
+
+        // Case-insensitive fallback only for short, plausible identifiers
+        if !id_or_source_id.contains(' ') && id_or_source_id.len() <= 128 {
+            let lower_key = id_or_source_id.to_lowercase();
+            let mut stmt_lower = conn.prepare(
+                "SELECT id, kind, title, summary, body, provider, source_id, source_url,
+                        repository, tags, relationships, created_at, updated_at, synced_at,
+                        checksum, metadata
+                 FROM knowledge_artifacts
+                 WHERE source_id = ?1 LIMIT 1",
+            )?;
+            if let Some(a) = stmt_lower.query_row(params![lower_key], Self::row_to_artifact).optional()? {
+                return Ok(Some(a));
+            }
+        }
+
+        Ok(None)
     }
 
     /// Resolve a Pull Request by repository name and PR number by exact equality
@@ -769,7 +955,7 @@ impl Storage {
                         repository, tags, relationships, created_at, updated_at, synced_at,
                         checksum, metadata
                  FROM knowledge_artifacts
-                 WHERE source_id = ?1 OR title = ?1",
+                 WHERE source_id = ?1 OR LOWER(source_id) = LOWER(?1) OR title = ?1",
             )?;
             let rows = stmt.query_map(params![clean], Self::row_to_artifact)?;
             for r in rows {
@@ -986,14 +1172,25 @@ impl Storage {
 
         // 2. Check for duplicate commit artifacts with conflicting titles
         let mut stmt = conn.prepare(
-            "SELECT source_id, COUNT(*), GROUP_CONCAT(title, ' || ') FROM knowledge_artifacts WHERE kind = 'commit' GROUP BY source_id HAVING COUNT(*) > 1",
+            "SELECT source_id, COUNT(*) FROM knowledge_artifacts WHERE kind = 'commit' GROUP BY source_id HAVING COUNT(*) > 1",
         )?;
         let dup_rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?))
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?;
+        let mut dups = Vec::new();
         for r in dup_rows {
-            let (src, count, titles) = r?;
-            issues.push(format!("Duplicate commit source_id (count {}): {} with titles: {}", count, src, titles));
+            dups.push(r?);
+        }
+
+        for (src, count) in dups {
+            let mut title_stmt = conn.prepare(
+                "SELECT title FROM knowledge_artifacts WHERE kind = 'commit' AND source_id = ?1",
+            )?;
+            let titles_vec: Vec<String> = title_stmt
+                .query_map(params![src], |row| row.get(0))?
+                .filter_map(Result::ok)
+                .collect();
+            issues.push(format!("Duplicate commit source_id (count {}): {} with titles: {}", count, src, titles_vec.join(" || ")));
         }
 
         Ok(issues)
@@ -1108,16 +1305,12 @@ impl Storage {
             format!("{}*", clean_query)
         };
 
-        let like_query = format!("%{}%", clean_query);
+        let mut where_sql = "FROM knowledge_fts fts
+                             JOIN knowledge_artifacts ka ON ka.id = fts.id
+                             WHERE fts.knowledge_fts MATCH ?1".to_string();
 
-        let mut where_sql = "FROM knowledge_artifacts ka
-                             WHERE (ka.source_id LIKE ?1
-                                 OR ka.title LIKE ?1
-                                 OR ka.id IN (SELECT id FROM knowledge_fts WHERE knowledge_fts MATCH ?2))".to_string();
-
-        let mut param_index = 3;
+        let mut param_index = 2;
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        params_vec.push(Box::new(like_query));
         params_vec.push(Box::new(formatted_query));
 
         if let Some(k) = kind {
@@ -1438,6 +1631,513 @@ impl Storage {
             updated_at,
             synced_at,
             checksum,
+            metadata,
+        })
+    }
+
+    pub fn get_artifact_header_by_id(&self, id_or_source_id: &str) -> Result<Option<ArtifactHeader>> {
+        let conn = self.get_connection()?;
+
+        // Fast path 1: exact match on primary key (id)
+        let mut stmt_id = conn.prepare(
+            "SELECT id, kind, title, provider, source_id, source_url, repository, updated_at, created_at, metadata
+             FROM knowledge_artifacts
+             WHERE id = ?1",
+        )?;
+        if let Some(h) = stmt_id.query_row(params![id_or_source_id], Self::row_to_header).optional()? {
+            return Ok(Some(h));
+        }
+
+        // Fast path 2: exact match on source_id (indexed)
+        let mut stmt_src = conn.prepare(
+            "SELECT id, kind, title, provider, source_id, source_url, repository, updated_at, created_at, metadata
+             FROM knowledge_artifacts
+             WHERE source_id = ?1",
+        )?;
+        if let Some(h) = stmt_src.query_row(params![id_or_source_id], Self::row_to_header).optional()? {
+            return Ok(Some(h));
+        }
+
+        // Case-insensitive fallback only for short, plausible identifiers (not search terms)
+        // Skip for strings containing spaces (multi-word search terms) to avoid full table scan
+        if !id_or_source_id.contains(' ') && id_or_source_id.len() <= 128 {
+            let lower_key = id_or_source_id.to_lowercase();
+            let mut stmt_src_lower = conn.prepare(
+                "SELECT id, kind, title, provider, source_id, source_url, repository, updated_at, created_at, metadata
+                 FROM knowledge_artifacts
+                 WHERE source_id = ?1 LIMIT 1",
+            )?;
+            if let Some(h) = stmt_src_lower.query_row(params![lower_key], Self::row_to_header).optional()? {
+                return Ok(Some(h));
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub fn get_artifact_headers_by_ids(&self, ids: &[String]) -> Result<Vec<ArtifactHeader>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.get_connection()?;
+        let mut results = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+
+        for chunk in ids.chunks(500) {
+            let mut query1 = String::from(
+                "SELECT id, kind, title, provider, source_id, source_url, repository, updated_at, created_at, metadata
+                 FROM knowledge_artifacts
+                 WHERE id IN ("
+            );
+            let mut params1: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for (idx, id) in chunk.iter().enumerate() {
+                if idx > 0 {
+                    query1.push_str(", ");
+                }
+                query1.push_str(&format!("?{}", idx + 1));
+                params1.push(Box::new(id.clone()));
+            }
+            query1.push(')');
+
+            let mut stmt1 = conn.prepare(&query1)?;
+            let rusqlite_params1: Vec<&dyn rusqlite::ToSql> = params1.iter().map(|b| b.as_ref()).collect();
+            let rows1 = stmt1.query_map(rusqlite_params1.as_slice(), Self::row_to_header)?;
+            for r in rows1 {
+                let h = r?;
+                if seen_ids.insert(h.id.clone()) {
+                    results.push(h);
+                }
+            }
+
+            let mut query2 = String::from(
+                "SELECT id, kind, title, provider, source_id, source_url, repository, updated_at, created_at, metadata
+                 FROM knowledge_artifacts
+                 WHERE source_id IN ("
+            );
+            let mut params2: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for (idx, id) in chunk.iter().enumerate() {
+                if idx > 0 {
+                    query2.push_str(", ");
+                }
+                query2.push_str(&format!("?{}", idx + 1));
+                params2.push(Box::new(id.clone()));
+            }
+            query2.push(')');
+
+            let mut stmt2 = conn.prepare(&query2)?;
+            let rusqlite_params2: Vec<&dyn rusqlite::ToSql> = params2.iter().map(|b| b.as_ref()).collect();
+            let rows2 = stmt2.query_map(rusqlite_params2.as_slice(), Self::row_to_header)?;
+            for r in rows2 {
+                let h = r?;
+                if seen_ids.insert(h.id.clone()) {
+                    results.push(h);
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn get_artifacts_by_ids(&self, ids: &[String]) -> Result<Vec<KnowledgeArtifact>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.get_connection()?;
+        let mut results = Vec::new();
+
+        for chunk in ids.chunks(500) {
+            let mut query = String::from(
+                "SELECT id, kind, title, summary, body, provider, source_id, source_url,
+                        repository, tags, relationships, created_at, updated_at, synced_at,
+                        checksum, metadata
+                 FROM knowledge_artifacts
+                 WHERE id IN ("
+            );
+            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for (idx, id) in chunk.iter().enumerate() {
+                if idx > 0 {
+                    query.push_str(", ");
+                }
+                query.push_str(&format!("?{}", idx + 1));
+                params_vec.push(Box::new(id.clone()));
+            }
+            query.push(')');
+
+            let mut stmt = conn.prepare(&query)?;
+            let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt.query_map(rusqlite_params.as_slice(), Self::row_to_artifact)?;
+            for r in rows {
+                results.push(r?);
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn get_related_headers(
+        &self,
+        id_or_source_id: &str,
+    ) -> Result<Vec<(ArtifactRelationship, ArtifactHeader)>> {
+        let conn = self.get_connection()?;
+
+        let key_header = self.get_artifact_header_by_id(id_or_source_id)?;
+        let (id_key, source_key) = match key_header {
+            Some(ref a) => (a.id.clone(), a.source_id.clone()),
+            None => (id_or_source_id.to_string(), id_or_source_id.to_string()),
+        };
+
+        let mut stmt1 = conn.prepare(
+            "SELECT source_id, target_id, relationship_type
+             FROM artifact_relationships
+             WHERE source_id IN (?1, ?2) AND source_id != target_id",
+        )?;
+        let rel_rows1 = stmt1.query_map(params![id_key, source_key], |row| {
+            Ok(ArtifactRelationship {
+                source_id: row.get(0)?,
+                target_id: row.get(1)?,
+                relationship_type: row.get(2)?,
+            })
+        })?;
+
+        let mut stmt2 = conn.prepare(
+            "SELECT source_id, target_id, relationship_type
+             FROM artifact_relationships
+             WHERE target_id IN (?1, ?2) AND source_id != target_id",
+        )?;
+        let rel_rows2 = stmt2.query_map(params![id_key, source_key], |row| {
+            Ok(ArtifactRelationship {
+                source_id: row.get(0)?,
+                target_id: row.get(1)?,
+                relationship_type: row.get(2)?,
+            })
+        })?;
+
+        let mut relationships = Vec::new();
+        let mut keys_to_fetch = Vec::new();
+
+        for rel in rel_rows1.chain(rel_rows2) {
+            let rel = rel?;
+            let is_outgoing = rel.source_id == id_key || rel.source_id == source_key;
+            let other_key = if is_outgoing {
+                rel.target_id.clone()
+            } else {
+                rel.source_id.clone()
+            };
+
+            if other_key == id_key || other_key == source_key {
+                continue;
+            }
+
+            keys_to_fetch.push(other_key.clone());
+            relationships.push((rel, is_outgoing, other_key));
+        }
+
+        let headers = self.get_artifact_headers_by_ids(&keys_to_fetch)?;
+        let mut header_map: std::collections::HashMap<String, ArtifactHeader> = std::collections::HashMap::new();
+        for h in headers {
+            header_map.insert(h.id.clone(), h.clone());
+            header_map.insert(h.source_id.clone(), h);
+        }
+
+        let mut results = Vec::new();
+        let mut seen_targets = std::collections::HashSet::new();
+
+        for (rel, is_outgoing, other_key) in relationships {
+            if let Some(other_header) = header_map.get(&other_key) {
+                let target_key = if !other_header.source_id.is_empty() {
+                    other_header.source_id.clone()
+                } else {
+                    other_header.id.clone()
+                };
+
+                if seen_targets.insert(target_key) {
+                    let effective_rel = if is_outgoing {
+                        rel
+                    } else {
+                        ArtifactRelationship {
+                            source_id: source_key.clone(),
+                            target_id: other_header.source_id.clone(),
+                            relationship_type: Self::inverse_relationship_type(&rel.relationship_type),
+                        }
+                    };
+
+                    results.push((effective_rel, other_header.clone()));
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn get_batch_related_headers(
+        &self,
+        id_keys: &[String],
+    ) -> Result<Vec<(ArtifactRelationship, ArtifactHeader)>> {
+        if id_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.get_connection()?;
+        let key_set: std::collections::HashSet<String> = id_keys.iter().cloned().collect();
+        let mut raw_rels = Vec::new();
+        let mut keys_to_fetch = Vec::new();
+
+        for chunk in id_keys.chunks(500) {
+            let mut q1 = String::from(
+                "SELECT source_id, target_id, relationship_type
+                 FROM artifact_relationships
+                 WHERE source_id IN ("
+            );
+            let mut p1: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for (idx, id) in chunk.iter().enumerate() {
+                if idx > 0 {
+                    q1.push_str(", ");
+                }
+                q1.push_str(&format!("?{}", idx + 1));
+                p1.push(Box::new(id.clone()));
+            }
+            q1.push(')');
+
+            let mut stmt1 = conn.prepare(&q1)?;
+            let params_ref1: Vec<&dyn rusqlite::ToSql> = p1.iter().map(|b| b.as_ref()).collect();
+            let rows1 = stmt1.query_map(params_ref1.as_slice(), |row| {
+                Ok(ArtifactRelationship {
+                    source_id: row.get(0)?,
+                    target_id: row.get(1)?,
+                    relationship_type: row.get(2)?,
+                })
+            })?;
+            for r in rows1 {
+                raw_rels.push(r?);
+            }
+
+            let mut q2 = String::from(
+                "SELECT source_id, target_id, relationship_type
+                 FROM artifact_relationships
+                 WHERE target_id IN ("
+            );
+            let mut p2: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for (idx, id) in chunk.iter().enumerate() {
+                if idx > 0 {
+                    q2.push_str(", ");
+                }
+                q2.push_str(&format!("?{}", idx + 1));
+                p2.push(Box::new(id.clone()));
+            }
+            q2.push(')');
+
+            let mut stmt2 = conn.prepare(&q2)?;
+            let params_ref2: Vec<&dyn rusqlite::ToSql> = p2.iter().map(|b| b.as_ref()).collect();
+            let rows2 = stmt2.query_map(params_ref2.as_slice(), |row| {
+                Ok(ArtifactRelationship {
+                    source_id: row.get(0)?,
+                    target_id: row.get(1)?,
+                    relationship_type: row.get(2)?,
+                })
+            })?;
+            for r in rows2 {
+                raw_rels.push(r?);
+            }
+        }
+
+        let mut processed_rels = Vec::new();
+        for rel in raw_rels {
+            let is_outgoing = key_set.contains(&rel.source_id);
+            let other_key = if is_outgoing {
+                rel.target_id.clone()
+            } else {
+                rel.source_id.clone()
+            };
+
+            if key_set.contains(&other_key) {
+                continue;
+            }
+
+            keys_to_fetch.push(other_key.clone());
+            processed_rels.push((rel, is_outgoing, other_key));
+        }
+
+        let headers = self.get_artifact_headers_by_ids(&keys_to_fetch)?;
+        let mut header_map: std::collections::HashMap<String, ArtifactHeader> = std::collections::HashMap::new();
+        for h in headers {
+            header_map.insert(h.id.clone(), h.clone());
+            header_map.insert(h.source_id.clone(), h);
+        }
+
+        let mut results = Vec::new();
+        let mut seen_targets = std::collections::HashSet::new();
+
+        for (rel, is_outgoing, other_key) in processed_rels {
+            if let Some(other_header) = header_map.get(&other_key) {
+                let target_key = if !other_header.source_id.is_empty() {
+                    other_header.source_id.clone()
+                } else {
+                    other_header.id.clone()
+                };
+
+                if seen_targets.insert(target_key) {
+                    let effective_rel = if is_outgoing {
+                        rel
+                    } else {
+                        ArtifactRelationship {
+                            source_id: rel.target_id.clone(),
+                            target_id: other_header.source_id.clone(),
+                            relationship_type: Self::inverse_relationship_type(&rel.relationship_type),
+                        }
+                    };
+
+                    results.push((effective_rel, other_header.clone()));
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn query_headers_by_repository(
+        &self,
+        repo: &str,
+        limit: usize,
+    ) -> Result<Vec<ArtifactHeader>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, kind, title, provider, source_id, source_url, repository, updated_at, created_at, metadata
+             FROM knowledge_artifacts
+             WHERE repository = ?1
+             ORDER BY updated_at DESC
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt.query_map(params![repo, limit as i64], Self::row_to_header)?;
+        let mut results = Vec::new();
+        for r in rows {
+            results.push(r?);
+        }
+        Ok(results)
+    }
+
+    pub fn search_fts_headers(
+        &self,
+        query: &str,
+        kind: Option<&str>,
+        repository: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<ArtifactHeader>> {
+        let conn = self.get_connection()?;
+        let clean_query = query.trim().replace('"', "");
+        if clean_query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let formatted_query = if clean_query.contains('-')
+            || clean_query.contains(':')
+            || clean_query.contains('/')
+            || clean_query.contains('\\')
+            || clean_query.contains(' ')
+        {
+            format!("\"{}\"", clean_query)
+        } else if clean_query.ends_with('*') {
+            clean_query.to_string()
+        } else {
+            format!("{}*", clean_query)
+        };
+
+        let mut results = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+
+        // Only attempt exact ID lookup if query looks like a single identifier (no spaces)
+        if !clean_query.contains(' ') {
+            if let Ok(Some(h)) = self.get_artifact_header_by_id(&clean_query) {
+                let matches_kind = kind.map_or(true, |k| h.kind.to_string().eq_ignore_ascii_case(k));
+                let matches_repo = repository.map_or(true, |r| h.repository.as_deref() == Some(r));
+                if matches_kind && matches_repo {
+                    seen_ids.insert(h.id.clone());
+                    results.push(h);
+                }
+            }
+        }
+
+        let mut fts_sql = String::from(
+            "SELECT ka.id, ka.kind, ka.title, ka.provider, ka.source_id, ka.source_url,
+                    ka.repository, ka.updated_at, ka.created_at, ka.metadata
+             FROM knowledge_fts fts
+             JOIN knowledge_artifacts ka ON ka.id = fts.id
+             WHERE fts.knowledge_fts MATCH ?1"
+        );
+
+        let mut param_index = 2;
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        params_vec.push(Box::new(formatted_query));
+
+        if let Some(k) = kind {
+            fts_sql.push_str(&format!(" AND ka.kind = ?{}", param_index));
+            params_vec.push(Box::new(k.to_string()));
+            param_index += 1;
+        }
+
+        if let Some(repo) = repository {
+            fts_sql.push_str(&format!(" AND ka.repository = ?{}", param_index));
+            params_vec.push(Box::new(repo.to_string()));
+            param_index += 1;
+        }
+
+        fts_sql.push_str(&format!(" ORDER BY ka.updated_at DESC LIMIT ?{}", param_index));
+        params_vec.push(Box::new(limit as i64));
+
+        if let Ok(mut stmt) = conn.prepare(&fts_sql) {
+            let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+            if let Ok(rows) = stmt.query_map(rusqlite_params.as_slice(), Self::row_to_header) {
+                for r in rows {
+                    if let Ok(h) = r {
+                        if seen_ids.insert(h.id.clone()) {
+                            results.push(h);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn row_to_header(row: &rusqlite::Row) -> rusqlite::Result<ArtifactHeader> {
+        let id: String = row.get(0)?;
+        let kind_str: String = row.get(1)?;
+        let title: String = row.get(2)?;
+        let provider: String = row.get(3)?;
+        let source_id: String = row.get(4)?;
+        let source_url: String = row.get(5)?;
+        let repository: Option<String> = row.get(6)?;
+        let updated_str: String = row.get(7)?;
+        let created_str: Option<String> = row.get(8)?;
+        let meta_json: String = row.get(9)?;
+
+        let kind = ArtifactKind::from_str(&kind_str).unwrap_or(ArtifactKind::Document);
+        let metadata: serde_json::Value =
+            serde_json::from_str(&meta_json).unwrap_or(serde_json::Value::Null);
+
+        let created_at = created_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .map(|d| d.with_timezone(&Utc))
+                .ok()
+        });
+
+        let updated_at = DateTime::parse_from_rfc3339(&updated_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        Ok(ArtifactHeader {
+            id,
+            kind,
+            title,
+            provider,
+            source_id,
+            source_url,
+            repository,
+            updated_at,
+            created_at,
             metadata,
         })
     }

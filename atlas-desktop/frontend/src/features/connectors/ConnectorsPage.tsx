@@ -27,6 +27,7 @@ import {
   Layers,
   Lock,
   HardDrive,
+  Trash2,
 } from 'lucide-react';
 
 interface ConnectorCardProps {
@@ -47,7 +48,9 @@ interface ConnectorCardProps {
   };
   onConfigure?: () => void;
   onSync?: () => void;
+  onClearData?: () => void;
   isSyncing?: boolean;
+  isClearing?: boolean;
 }
 
 const TagBadge: React.FC<{ label: string; color: string }> = ({ label, color }) => {
@@ -80,7 +83,9 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({
   configuredDetails,
   onConfigure,
   onSync,
+  onClearData,
   isSyncing,
+  isClearing,
 }) => {
   return (
     <div
@@ -167,18 +172,31 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({
 
       {/* Action Footer */}
       <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-zinc-800/60 mt-auto">
-        <button
-          onClick={isAvailable ? onConfigure : undefined}
-          disabled={!isAvailable}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs ${
-            !isAvailable
-              ? 'bg-slate-100 dark:bg-zinc-800/50 text-slate-400 dark:text-zinc-600 border border-slate-200/60 dark:border-zinc-800 cursor-not-allowed pointer-events-none'
-              : 'bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700'
-          }`}
-        >
-          <Settings2 className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
-          <span>{!isAvailable ? 'Not Available' : isConfigured ? 'Edit Settings' : 'Configure'}</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={isAvailable ? onConfigure : undefined}
+            disabled={!isAvailable}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs ${
+              !isAvailable
+                ? 'bg-slate-100 dark:bg-zinc-800/50 text-slate-400 dark:text-zinc-600 border border-slate-200/60 dark:border-zinc-800 cursor-not-allowed pointer-events-none'
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700'
+            }`}
+          >
+            <Settings2 className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+            <span>{!isAvailable ? 'Not Available' : isConfigured ? 'Edit' : 'Configure'}</span>
+          </button>
+
+          {isConfigured && onClearData && isAvailable && (
+            <button
+              onClick={onClearData}
+              disabled={isClearing}
+              title="Clear Connector Data"
+              className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 transition active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
 
         {isConfigured && onSync && isAvailable && (
           <button
@@ -205,6 +223,7 @@ export const ConnectorsPage: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const { data: connectors, refetch } = useQuery({
     queryKey: ['connectors'],
@@ -221,6 +240,16 @@ export const ConnectorsPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['syncStatus'] });
       queryClient.invalidateQueries({ queryKey: ['connectors'] });
+    },
+  });
+
+  const deleteConnectorMutation = useMutation({
+    mutationFn: ({ id, clearData }: { id: string; clearData: boolean }) => api.deleteConnector(id, clearData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connectors'] });
+      queryClient.invalidateQueries({ queryKey: ['syncStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['status'] });
+      setDeleteTarget(null);
     },
   });
 
@@ -280,6 +309,34 @@ export const ConnectorsPage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Sync Progress Bar Banner */}
+        {syncProgress?.is_running && (
+          <div className="bg-indigo-50/80 dark:bg-indigo-950/40 p-4 rounded-xl border border-indigo-200 dark:border-indigo-800/60 space-y-2">
+            <div className="flex justify-between items-center text-xs font-semibold text-indigo-900 dark:text-indigo-200">
+              <span className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+                <span>
+                  Syncing {syncProgress.current_connector || 'connectors'}...{' '}
+                  <span className="font-normal text-indigo-700 dark:text-indigo-300">
+                    {syncProgress.phase ? `(${syncProgress.phase})` : ''}
+                  </span>
+                </span>
+              </span>
+              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                {typeof syncProgress.percentage === 'number'
+                  ? `${syncProgress.percentage.toFixed(0)}%`
+                  : `${syncProgress.fetched} items`}
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-indigo-200/80 dark:bg-indigo-900/60 rounded-full overflow-hidden p-0.5">
+              <div
+                className="h-full bg-indigo-600 dark:bg-indigo-400 rounded-full transition-all duration-300 shadow-2xs"
+                style={{ width: `${Math.max(5, syncProgress.percentage || 0)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Filter and Search Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-200/80 dark:border-zinc-800/80">
@@ -352,7 +409,9 @@ export const ConnectorsPage: React.FC = () => {
               }
               onConfigure={() => setIsJiraOpen(true)}
               onSync={() => jiraConfig && syncMutation.mutate(jiraConfig.id)}
+              onClearData={() => jiraConfig && setDeleteTarget({ id: jiraConfig.id, name: 'Jira Software' })}
               isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === jiraConfig?.id}
             />
 
             {/* Linear */}
@@ -429,7 +488,9 @@ export const ConnectorsPage: React.FC = () => {
               }
               onConfigure={() => setIsLocalGitOpen(true)}
               onSync={() => localGitConfig && syncMutation.mutate(localGitConfig.id)}
+              onClearData={() => localGitConfig && setDeleteTarget({ id: localGitConfig.id, name: 'Local Git Repository' })}
               isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === localGitConfig?.id}
             />
 
             {/* GitHub Card */}
@@ -454,7 +515,9 @@ export const ConnectorsPage: React.FC = () => {
               }
               onConfigure={() => setIsGithubOpen(true)}
               onSync={() => githubConfig && syncMutation.mutate(githubConfig.id)}
+              onClearData={() => githubConfig && setDeleteTarget({ id: githubConfig.id, name: 'GitHub' })}
               isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === githubConfig?.id}
             />
 
             {/* Azure DevOps */}
@@ -583,7 +646,9 @@ export const ConnectorsPage: React.FC = () => {
               }
               onConfigure={() => setIsConfluenceOpen(true)}
               onSync={() => confluenceConfig && syncMutation.mutate(confluenceConfig.id)}
+              onClearData={() => confluenceConfig && setDeleteTarget({ id: confluenceConfig.id, name: 'Confluence' })}
               isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === confluenceConfig?.id}
             />
 
             {/* Notion */}
@@ -619,7 +684,9 @@ export const ConnectorsPage: React.FC = () => {
               }
               onConfigure={() => setIsMarkdownOpen(true)}
               onSync={() => markdownConfig && syncMutation.mutate(markdownConfig.id)}
+              onClearData={() => markdownConfig && setDeleteTarget({ id: markdownConfig.id, name: 'Local Markdown & ADRs' })}
               isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === markdownConfig?.id}
             />
 
             {/* Spreadsheets */}
@@ -689,6 +756,42 @@ export const ConnectorsPage: React.FC = () => {
           paths: localGitConfig.paths,
         } : undefined}
       />
+
+      {/* Delete / Clear Connector Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 max-w-md w-full border border-slate-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+              <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/40">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-zinc-100">
+                Delete Connector & Data
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
+              Are you sure you want to delete connector <strong className="text-slate-900 dark:text-zinc-200">{deleteTarget.name}</strong> (<code className="font-mono text-indigo-600 dark:text-indigo-400">{deleteTarget.id}</code>)? This will remove its configuration and clear all its synchronized artifacts from the local database.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteConnectorMutation.mutate({ id: deleteTarget.id, clearData: true })}
+                disabled={deleteConnectorMutation.isPending}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center gap-1.5 disabled:opacity-50 shadow-md shadow-rose-500/20"
+              >
+                {deleteConnectorMutation.isPending ? 'Deleting...' : 'Delete & Clear Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

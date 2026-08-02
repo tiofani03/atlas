@@ -31,6 +31,10 @@ pub async fn trigger_sync(
     progress.inserted = 0;
     progress.updated = 0;
     progress.skipped = 0;
+    progress.current = 0;
+    progress.total = 0;
+    progress.percentage = 0.0;
+    progress.phase = Some("Initializing pipeline...".to_string());
     progress.error = None;
     progress.current_connector = payload.connector_id.clone();
     drop(progress);
@@ -57,10 +61,15 @@ pub async fn trigger_sync(
                 }
             }
 
-            for (id, connector_cfg) in target_connectors {
+            let total_connectors = target_connectors.len();
+            for (idx, (id, connector_cfg)) in target_connectors.into_iter().enumerate() {
                 {
                     let mut p = state_clone.sync_progress.write().await;
                     p.current_connector = Some(id.clone());
+                    p.phase = Some(format!("Ingesting context for {}...", id));
+                    p.current = idx + 1;
+                    p.total = total_connectors;
+                    p.percentage = ((idx as f32) / (total_connectors as f32)) * 100.0;
                 }
 
                 let conn_instance = match connector_cfg.provider.as_str() {
@@ -86,6 +95,8 @@ pub async fn trigger_sync(
                 p.inserted += summary.inserted;
                 p.updated += summary.updated;
                 p.skipped += summary.skipped;
+                p.phase = Some(format!("Indexed {} artifacts", summary.fetched));
+                p.percentage = (((idx + 1) as f32) / (total_connectors as f32)) * 100.0;
             }
 
             Ok::<(), anyhow::Error>(())
@@ -93,6 +104,8 @@ pub async fn trigger_sync(
 
         let mut p = state_clone.sync_progress.write().await;
         p.is_running = false;
+        p.percentage = 100.0;
+        p.phase = None;
         p.last_completed_at = Some(Utc::now().to_rfc3339());
         if let Err(e) = run_result {
             p.error = Some(format!("{:#}", e));

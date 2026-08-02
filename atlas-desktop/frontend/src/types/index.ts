@@ -25,6 +25,10 @@ export interface ConnectorInfo {
 export interface SyncProgressInfo {
   is_running: boolean;
   current_connector: string | null;
+  phase?: string | null;
+  current?: number;
+  total?: number;
+  percentage?: number;
   fetched: number;
   inserted: number;
   updated: number;
