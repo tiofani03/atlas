@@ -1,9 +1,10 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
 use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
-use anyhow::{Context, Result};
-use chrono::Utc;
+use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Utc};
 use serde_json::Value;
+use std::path::Path;
 
 pub struct OpenapiConnector {
     id: String,
@@ -17,16 +18,37 @@ impl OpenapiConnector {
         Ok(Self { id, config, client })
     }
 
-    async fn load_spec(&self, path_or_url: &str) -> Result<Value> {
-        if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
-            let res = self.client.get(path_or_url).send().await?.text().await?;
-            serde_json::from_str::<Value>(&res)
-                .with_context(|| format!("Failed to parse JSON spec from URL: {}", path_or_url))
+    /// Load specification content from a URL or local file, attempting JSON and YAML parsing
+    pub async fn load_spec(&self, path_or_url: &str) -> Result<Value> {
+        let raw_content = if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+            self.client
+                .get(path_or_url)
+                .send()
+                .await
+                .with_context(|| format!("Failed to fetch OpenAPI spec from URL: {}", path_or_url))?
+                .text()
+                .await
+                .with_context(|| format!("Failed to read text from URL: {}", path_or_url))?
         } else {
-            let content = std::fs::read_to_string(path_or_url)
-                .with_context(|| format!("Failed to read OpenAPI spec at {}", path_or_url))?;
-            serde_json::from_str::<Value>(&content)
-                .with_context(|| format!("Failed to parse JSON spec from file: {}", path_or_url))
+            std::fs::read_to_string(path_or_url)
+                .with_context(|| format!("Failed to read OpenAPI spec at local file path: {}", path_or_url))?
+        };
+
+        // 1. Try parsing as JSON first
+        if let Ok(json_val) = serde_json::from_str::<Value>(&raw_content) {
+            return Ok(json_val);
+        }
+
+        // 2. Fallback to parsing as YAML
+        match serde_yaml::from_str::<Value>(&raw_content) {
+            Ok(yaml_val) => Ok(yaml_val),
+            Err(yaml_err) => {
+                bail!(
+                    "Failed to parse OpenAPI spec from '{}' as either JSON or YAML: {}",
+                    path_or_url,
+                    yaml_err
+                );
+            }
         }
     }
 }
@@ -41,15 +63,48 @@ impl Connector for OpenapiConnector {
         "openapi"
     }
 
-    async fn fetch_modified(&self, _since: Option<chrono::DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
+    async fn verify(&self) -> Result<String> {
+        let paths = self.config.get_paths();
+        if paths.is_empty() {
+            bail!("No OpenAPI spec paths or URLs configured for connector '{}'", self.id);
+        }
+
+        let mut verified_count = 0;
+        for path in &paths {
+            let spec_val = self.load_spec(path).await.with_context(|| format!("Verification failed for spec at '{}'", path))?;
+            let title = spec_val["info"]["title"].as_str().unwrap_or("OpenAPI Specification");
+            let version = spec_val["info"]["version"].as_str().unwrap_or("1.0.0");
+            verified_count += 1;
+            tracing::info!("Verified OpenAPI spec: {} (v{}) at {}", title, version, path);
+        }
+
+        Ok(format!("Successfully verified {} OpenAPI specification(s).", verified_count))
+    }
+
+    async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let mut artifacts = Vec::new();
         let paths = self.config.get_paths();
 
         for spec_loc in &paths {
+            // Check local file mtime for incremental skip
+            if !spec_loc.starts_with("http://") && !spec_loc.starts_with("https://") {
+                if let Some(since_dt) = since {
+                    let path_buf = Path::new(spec_loc);
+                    if let Ok(metadata) = path_buf.metadata() {
+                        if let Ok(modified) = metadata.modified() {
+                            let mtime: DateTime<Utc> = modified.into();
+                            if mtime < since_dt {
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+
             let spec_val = match self.load_spec(spec_loc).await {
                 Ok(v) => v,
                 Err(e) => {
-                    eprintln!("Warning: failed to load openapi spec {}: {}", spec_loc, e);
+                    tracing::warn!("Warning: failed to load openapi spec {}: {}", spec_loc, e);
                     continue;
                 }
             };
@@ -201,12 +256,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_openapi_parse_local_file() {
+    async fn test_openapi_parse_local_json_file() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("spec.json");
         let spec_json = serde_json::json!({
             "openapi": "3.0.0",
-            "info": { "title": "Petstore", "version": "1.0.0" },
+            "info": { "title": "Petstore JSON", "version": "1.0.0" },
             "paths": {
                 "/pets": {
                     "get": { "summary": "List pets", "description": "Returns pets" }
@@ -220,10 +275,54 @@ mod tests {
         cfg.provider = "openapi".to_string();
         cfg.path = Some(file_path.to_str().unwrap().to_string());
 
-        let conn = OpenapiConnector::new("openapi-local".to_string(), cfg).unwrap();
+        let conn = OpenapiConnector::new("openapi-local-json".to_string(), cfg).unwrap();
         let artifacts = conn.fetch_modified(None).await.unwrap();
 
         assert!(!artifacts.is_empty());
         assert!(artifacts.iter().any(|a| a.title.contains("GET /pets")));
+    }
+
+    #[tokio::test]
+    async fn test_openapi_parse_local_yaml_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("spec.yaml");
+        let spec_yaml = r#"
+openapi: 3.0.0
+info:
+  title: Users Service API
+  version: 2.1.0
+  description: Authentication and User Management API
+paths:
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      description: Returns user profile
+    delete:
+      summary: Delete user
+      description: Deactivates account
+components:
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+"#;
+        let mut f = std::fs::File::create(&file_path).unwrap();
+        f.write_all(spec_yaml.as_bytes()).unwrap();
+
+        let mut cfg = ConnectorConfig::default();
+        cfg.provider = "openapi".to_string();
+        cfg.path = Some(file_path.to_str().unwrap().to_string());
+
+        let conn = OpenapiConnector::new("openapi-local-yaml".to_string(), cfg).unwrap();
+        let artifacts = conn.fetch_modified(None).await.unwrap();
+
+        assert!(!artifacts.is_empty());
+        assert!(artifacts.iter().any(|a| a.title.contains("GET /users/{id}")));
+        assert!(artifacts.iter().any(|a| a.title.contains("DELETE /users/{id}")));
+        assert!(artifacts.iter().any(|a| a.title == "Schema: UserProfile"));
     }
 }

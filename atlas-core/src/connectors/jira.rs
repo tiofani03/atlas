@@ -141,6 +141,29 @@ impl Connector for JiraConnector {
         "jira"
     }
 
+    async fn verify(&self) -> Result<String> {
+        let base_url = self.config.instance_url.trim_end_matches('/');
+        let url = format!("{}/rest/api/3/myself", base_url);
+        let resp = self.client.get(&url).send().await.context("Failed to connect to Jira API")?;
+        if resp.status().is_success() {
+            let json: Value = resp.json().await.unwrap_or_default();
+            let display_name = json["displayName"].as_str().unwrap_or("authenticated user");
+            Ok(format!("Connected to Jira successfully as '{}'.", display_name))
+        } else {
+            let fallback_url = format!("{}/rest/api/2/myself", base_url);
+            if let Ok(f_resp) = self.client.get(&fallback_url).send().await {
+                if f_resp.status().is_success() {
+                    let json: Value = f_resp.json().await.unwrap_or_default();
+                    let display_name = json["displayName"].as_str().unwrap_or("authenticated user");
+                    return Ok(format!("Connected to Jira successfully as '{}'.", display_name));
+                }
+            }
+            let status = resp.status();
+            let err = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Jira verification failed with status {}: {}", status, err);
+        }
+    }
+
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let mut jql = String::new();
 

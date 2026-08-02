@@ -62,6 +62,27 @@ impl Connector for ConfluenceConnector {
         "confluence"
     }
 
+    async fn verify(&self) -> Result<String> {
+        let base_url = self.config.instance_url.trim_end_matches('/');
+        let url = format!("{}/wiki/rest/api/user/current", base_url);
+        let resp = self.client.get(&url).send().await.context("Failed to connect to Confluence API")?;
+        if resp.status().is_success() {
+            let json: Value = resp.json().await.unwrap_or_default();
+            let display_name = json["displayName"].as_str().unwrap_or("authenticated user");
+            Ok(format!("Connected to Confluence successfully as '{}'.", display_name))
+        } else {
+            let fallback_url = format!("{}/wiki/api/v2/spaces?limit=1", base_url);
+            if let Ok(f_resp) = self.client.get(&fallback_url).send().await {
+                if f_resp.status().is_success() {
+                    return Ok("Connected to Confluence successfully.".to_string());
+                }
+            }
+            let status = resp.status();
+            let err = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Confluence verification failed with status {}: {}", status, err);
+        }
+    }
+
     async fn fetch_modified(&self, _since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let base_url = self.config.instance_url.trim_end_matches('/');
         let url = format!("{}/wiki/api/v2/pages", base_url);

@@ -500,6 +500,15 @@ impl Connector for LocalGitConnector {
         "local_git"
     }
 
+    async fn verify(&self) -> Result<String> {
+        let repo_count = self.registry.repositories.len();
+        if repo_count == 0 {
+            anyhow::bail!("No valid local Git repositories found in registry.");
+        }
+        let names: Vec<String> = self.registry.repositories.iter().map(|r| r.name.clone()).collect();
+        Ok(format!("Verified {} local git repository(ies): {}", repo_count, names.join(", ")))
+    }
+
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let mut artifacts = Vec::new();
 

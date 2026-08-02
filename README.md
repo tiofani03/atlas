@@ -14,9 +14,10 @@
 
 - 🏗️ **Canonical Engineering Artifact Model (`KnowledgeArtifact`)**: Normalizes vendor-specific data into generic, vendor-neutral engineering artifacts (`Repository`, `Issue`, `PullRequest`, `PullRequestReview`, `ReviewComment`, `Commit`, `Release`, `Ticket`, `Document`).
 - 🕸️ **Relationship Graph (`ArtifactRelationship`)**: First-class directed relationship graph (`owns`, `belongs_to`, `contains`, `references`, `parent_commit`) connecting artifacts across toolchains without hardcoded logic.
-- 🐙 **Expanded GitHub Connector**: Synchronizes collaboration metadata across repositories, issues, pull requests, reviews, review comments, commits (metadata only—no source code), and releases with watermark incremental syncing.
+- 🔌 **14 Comprehensive Connectors**: Native support for **GitHub**, **GitLab**, **ClickUp**, **Linear**, **Notion**, **Swagger/OpenAPI**, **Markdown**, **Jira**, **Confluence**, **Asana**, **Azure DevOps**, **Bitbucket**, **Figma**, and **Local Git**.
 - ⚡ **High-Performance Storage & Search (`atlas-core`)**: Built in Rust using SQLite & FTS5 for instant local BM25 full-text search and graph traversals.
-- 💻 **Developer CLI (`atx`)**: Query artifacts (`search`, `artifact <id>`, `related <id>`, `repository <repo>`), configure connectors, trigger background syncs, and check context graph status.
+- 💻 **Developer CLI (`atx`)**: Query artifacts (`search`, `artifact <id>`, `related <id>`, `repository <repo>`), configure connectors (`config <provider>`), verify connectivity (`connector verify <id>`), check health (`connector doctor`), and run syncs with progress telemetry.
+- 🛡️ **Resilience & Health Monitoring**: Automatic circuit breaking, retry budgets, exponential backoff, and P95 latency tracking for every connector.
 - 🤖 **Model Context Protocol (MCP) Server**: Stdio MCP tools (`atx_search`, `atx_artifact`, `atx_related`, `atx_status`) enabling AI models (Claude, Cursor, Antigravity, etc.) to consume engineering context directly.
 
 ---
@@ -26,16 +27,30 @@
 ```text
 atlas/
 ├── atlas-core/              # Core engine library (Rust)
-│   ├── src/connectors/      # Multi-source connectors (GitHub, Jira, Confluence)
-│   │   ├── github.rs        # GitHub connector (Repo, Issue, PR, Review, Comment, Commit, Release)
+│   ├── src/connectors/      # Multi-source connectors
+│   │   ├── github.rs        # GitHub connector
+│   │   ├── gitlab.rs        # GitLab connector
+│   │   ├── clickup.rs       # ClickUp connector
+│   │   ├── linear.rs        # Linear connector
+│   │   ├── notion.rs        # Notion connector (recursive block markdown)
+│   │   ├── openapi.rs       # Swagger / OpenAPI connector (JSON & YAML)
+│   │   ├── markdown.rs      # Local Markdown connector
 │   │   ├── jira.rs          # Jira ticket connector
-│   │   └── confluence.rs    # Confluence document connector
-│   ├── src/domain.rs        # Normalized domain models (KnowledgeArtifact, ArtifactKind, ArtifactRelationship)
+│   │   ├── confluence.rs    # Confluence document connector
+│   │   ├── asana.rs         # Asana connector
+│   │   ├── azure_devops.rs  # Azure DevOps connector
+│   │   ├── bitbucket.rs     # Bitbucket connector
+│   │   ├── figma.rs         # Figma connector
+│   │   └── local_git.rs     # Local Git repository connector
+│   ├── src/domain.rs        # Normalized domain models (KnowledgeArtifact, ArtifactKind)
+│   ├── src/resilience/      # Retry policy, circuit breaker, bulkhead
+│   ├── src/health/          # Health reports and scoring engine
+│   ├── src/progress/        # Sync progress event bus & renderers
 │   ├── src/storage.rs       # SQLite storage & graph database + FTS5 index
 │   ├── src/sync.rs          # Incremental sync engine
 │   └── src/mcp.rs           # Model Context Protocol stdio server
 ├── atx/                     # CLI binary tool (`atx`)
-│   └── src/main.rs          # CLI entry point (search, artifact, related, repository, sync, status)
+│   └── src/main.rs          # CLI entry point
 ├── atlas-desktop/           # Desktop & Web Application
 │   ├── backend/             # Axum REST API server (Rust)
 │   └── frontend/            # React 19 UI (TypeScript, Vite, TailwindCSS v4)
@@ -78,23 +93,50 @@ cargo run --bin atx -- init
 
 ### Configure Connectors
 
-**Configure GitHub:**
+All connectors can be configured using `atx config <provider>`:
+
 ```bash
-cargo run --bin atx -- config github --token-env GITHUB_TOKEN --repos "owner/repo1,owner/repo2"
+# Configure GitHub
+cargo run --bin atx -- config github github-main --token-env GITHUB_TOKEN --repos "owner/repo1,owner/repo2"
+
+# Configure GitLab
+cargo run --bin atx -- config gitlab gitlab-main --url https://gitlab.com --token-env GITLAB_TOKEN --repos "owner/repo"
+
+# Configure ClickUp
+cargo run --bin atx -- config clickup clickup-main --token-env CLICKUP_TOKEN --workspace "123456"
+
+# Configure Linear
+cargo run --bin atx -- config linear linear-main --token-env LINEAR_API_KEY
+
+# Configure Notion
+cargo run --bin atx -- config notion notion-main --token-env NOTION_TOKEN
+
+# Configure Swagger / OpenAPI (JSON or YAML)
+cargo run --bin atx -- config openapi api-spec --path ./openapi.yaml
+
+# Configure Markdown Documentation
+cargo run --bin atx -- config markdown local-docs --path ./docs
+
+# Configure Local Git Repository
+cargo run --bin atx -- config local-git atlas-repo --path .
+
+# Configure Jira & Confluence
+cargo run --bin atx -- config jira jira-main --url https://company.atlassian.net --email user@example.com --token-env JIRA_API_TOKEN --projects "PAY,DEV"
+cargo run --bin atx -- config confluence conf-main --url https://company.atlassian.net --email user@example.com --token-env CONFLUENCE_API_TOKEN --spaces "ENG,ARCH"
 ```
 
-**Configure Jira:**
-```bash
-cargo run --bin atx -- config jira --url https://company.atlassian.net --email user@example.com --token-env JIRA_API_TOKEN --projects "PAY,DEV"
-```
+### Verify Connectors & Check Health
 
-**Configure Confluence:**
 ```bash
-cargo run --bin atx -- config confluence --url https://company.atlassian.net --email user@example.com --token-env CONFLUENCE_API_TOKEN --spaces "ENG,ARCH"
+# Test live connectivity for a connector
+cargo run --bin atx -- connector verify github-main
+
+# View connector health monitoring report & P95 latency
+cargo run --bin atx -- connector doctor
 ```
 
 ### Synchronize Knowledge
-Sync configured connectors into local SQLite storage:
+
 ```bash
 # Sync all connectors
 cargo run --bin atx -- sync

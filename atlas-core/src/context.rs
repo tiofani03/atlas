@@ -2146,7 +2146,7 @@ fn infer_advanced_hypothesis(
     primary: &Option<KnowledgeArtifact>,
     aspects: &HashSet<DomainAspect>,
     repos: &[String],
-    reading: &[RecommendedItem],
+    _reading: &[RecommendedItem],
     adrs: &[LabeledArtifact],
     prs: &[LabeledArtifact],
     apis: &[LabeledArtifact],
@@ -2221,109 +2221,6 @@ fn infer_advanced_hypothesis(
         estimated_components: est.to_string(),
         confidence: conf.to_string(),
     }
-}
-
-fn build_execution_queue(
-    target_id: &str,
-    title: &str,
-    primary: &Option<KnowledgeArtifact>,
-    reading: &[RecommendedItem],
-    repos: &[String],
-    prs: &[LabeledArtifact],
-    _aspects: &HashSet<DomainAspect>,
-) -> Vec<QueueStep> {
-    let mut steps = Vec::new();
-    let mut idx = 1;
-    let mut total = 4;
-
-    if reading.iter().any(|r| r.reason.contains("Architecture") || r.kind.contains("Doc")) {
-        total += 1;
-    }
-    if !prs.is_empty() {
-        total += 1;
-    }
-
-    if let Some(item) = reading.first() {
-        steps.push(QueueStep {
-            step_index: idx,
-            total_steps: total,
-            category: "Required".to_string(),
-            title: "Read technical specification".to_string(),
-            artifact_label: Some(format!("{} ({})", item.source_id, item.title)),
-            reason: item.reason.clone(),
-            command: Some(format!("atx context \"{}\"", item.source_id)),
-            status: "Pending".to_string(),
-        });
-        idx += 1;
-    } else {
-        steps.push(QueueStep {
-            step_index: idx,
-            total_steps: total,
-            category: "Required".to_string(),
-            title: "Inspect primary artifact requirements".to_string(),
-            artifact_label: Some(target_id.to_string()),
-            reason: "Extract core acceptance criteria and feature scope.".to_string(),
-            command: Some(format!("atx artifact {}", target_id)),
-            status: "Pending".to_string(),
-        });
-        idx += 1;
-    }
-
-    if let Some(item) = reading.iter().skip(1).find(|r| r.reason.contains("API") || r.reason.contains("Architecture")) {
-        steps.push(QueueStep {
-            step_index: idx,
-            total_steps: total,
-            category: "Required".to_string(),
-            title: "Inspect API contracts and architecture guidelines".to_string(),
-            artifact_label: Some(format!("{} ({})", item.source_id, item.title)),
-            reason: item.reason.clone(),
-            command: Some(format!("atx context \"{}\"", item.source_id)),
-            status: "Pending".to_string(),
-        });
-        idx += 1;
-    }
-
-    if let Some(repo) = repos.first() {
-        steps.push(QueueStep {
-            step_index: idx,
-            total_steps: total,
-            category: "Required".to_string(),
-            title: "Locate repository implementation pattern".to_string(),
-            artifact_label: Some(format!("Repository {}", repo)),
-            reason: "Identify candidate source files and code structure.".to_string(),
-            command: Some(format!("atx repository {}", repo)),
-            status: "Pending".to_string(),
-        });
-        idx += 1;
-    }
-
-    let search_kw = extract_search_terms(title, &[]);
-    if !search_kw.is_empty() {
-        steps.push(QueueStep {
-            step_index: idx,
-            total_steps: total,
-            category: "Required".to_string(),
-            title: format!("Search existing implementation matching '{}'", search_kw),
-            artifact_label: None,
-            reason: "Find existing code mechanics and reusable functions.".to_string(),
-            command: Some(format!("atx search \"{}\"", search_kw)),
-            status: "Pending".to_string(),
-        });
-        idx += 1;
-    }
-
-    steps.push(QueueStep {
-        step_index: idx,
-        total_steps: total,
-        category: "Optional".to_string(),
-        title: "Inspect related tickets for additional context".to_string(),
-        artifact_label: None,
-        reason: "Supplemental context from related work items.".to_string(),
-        command: None,
-        status: "Pending".to_string(),
-    });
-
-    steps
 }
 
 fn build_known_facts(
@@ -2685,7 +2582,6 @@ fn build_dependency_aware_queue(
             command: Some(format!("atx artifact {}", rel.artifact.source_id)),
             status: "Pending".to_string(),
         });
-        step_index += 1;
     }
 
     let total = steps.len();

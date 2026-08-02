@@ -95,6 +95,35 @@ impl Connector for GithubConnector {
         "github"
     }
 
+    async fn verify(&self) -> Result<String> {
+        use anyhow::Context;
+        let base_url = if self.config.instance_url.is_empty() {
+            "https://api.github.com".to_string()
+        } else {
+            self.config.instance_url.trim_end_matches('/').to_string()
+        };
+
+        let user_url = format!("{}/user", base_url);
+        let resp = self.client.get(&user_url).send().await.context("Failed to connect to GitHub API")?;
+        if resp.status().is_success() {
+            let user_val: Value = resp.json().await.unwrap_or_default();
+            let login = user_val["login"].as_str().unwrap_or("authenticated user");
+            Ok(format!("Connected to GitHub as @{}.", login))
+        } else if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            anyhow::bail!("GitHub verification failed: 401 Unauthorized. Check your API token.");
+        } else {
+            let rate_limit_url = format!("{}/rate_limit", base_url);
+            if let Ok(rl_resp) = self.client.get(&rate_limit_url).send().await {
+                if rl_resp.status().is_success() {
+                    return Ok("Connected to GitHub API successfully.".to_string());
+                }
+            }
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("GitHub verification failed (status {}): {}", status, text);
+        }
+    }
+
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let base_url = if self.config.instance_url.is_empty() {
             "https://api.github.com".to_string()

@@ -362,6 +362,27 @@ enum ConfigSubcommands {
         #[arg(long)]
         add_repos: Option<String>,
     },
+    /// Configure GitLab connector
+    Gitlab {
+        /// Connector ID (e.g. "gitlab-main")
+        #[arg(default_value = "gitlab-main")]
+        id: String,
+        /// GitLab Base URL [default: https://gitlab.com]
+        #[arg(long)]
+        url: Option<String>,
+        /// Personal Access Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing Personal Access Token
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Comma-separated projects/repos (e.g. "group/project")
+        #[arg(long)]
+        projects: Option<String>,
+        /// Add comma-separated projects to existing list
+        #[arg(long)]
+        add_projects: Option<String>,
+    },
     /// Configure ClickUp connector
     Clickup {
         /// Connector ID (e.g. "clickup-main")
@@ -385,6 +406,135 @@ enum ConfigSubcommands {
         /// Comma-separated list keys or IDs
         #[arg(long)]
         lists: Option<String>,
+    },
+    /// Configure Notion connector
+    Notion {
+        /// Connector ID (e.g. "notion-docs")
+        #[arg(default_value = "notion-docs")]
+        id: String,
+        /// Notion Internal Integration Secret / Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing Notion Integration Token
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Comma-separated database IDs
+        #[arg(long)]
+        database_ids: Option<String>,
+        /// Comma-separated page IDs
+        #[arg(long)]
+        page_ids: Option<String>,
+    },
+    /// Configure Linear connector
+    Linear {
+        /// Connector ID (e.g. "linear-main")
+        #[arg(default_value = "linear-main")]
+        id: String,
+        /// Linear API endpoint [default: https://api.linear.app/graphql]
+        #[arg(long)]
+        url: Option<String>,
+        /// Linear API Key
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing Linear API Key
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Enable or disable comment thread syncing [default: true]
+        #[arg(long)]
+        sync_comments: Option<bool>,
+    },
+    /// Configure OpenAPI / Swagger connector
+    Openapi {
+        /// Connector ID (e.g. "openapi-specs")
+        #[arg(default_value = "openapi-specs")]
+        id: String,
+        /// Primary file path or URL to OpenAPI spec (JSON or YAML)
+        #[arg(long)]
+        path: Option<String>,
+        /// Comma-separated paths or URLs to OpenAPI specs
+        #[arg(long)]
+        paths: Option<String>,
+        /// Add comma-separated paths or URLs
+        #[arg(long)]
+        add_paths: Option<String>,
+    },
+    /// Configure Asana connector
+    Asana {
+        /// Connector ID (e.g. "asana-main")
+        #[arg(default_value = "asana-main")]
+        id: String,
+        /// Personal Access Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing Personal Access Token
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Asana Workspace ID
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Comma-separated project GIDs
+        #[arg(long)]
+        projects: Option<String>,
+    },
+    /// Configure Azure DevOps connector
+    AzureDevops {
+        /// Connector ID (e.g. "ado-main")
+        #[arg(default_value = "ado-main")]
+        id: String,
+        /// Azure DevOps instance URL (e.g. https://dev.azure.com)
+        #[arg(long)]
+        url: Option<String>,
+        /// Personal Access Token (PAT)
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing PAT
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Organization name
+        #[arg(long)]
+        org: Option<String>,
+        /// Comma-separated project names
+        #[arg(long)]
+        projects: Option<String>,
+    },
+    /// Configure Bitbucket connector
+    Bitbucket {
+        /// Connector ID (e.g. "bitbucket-main")
+        #[arg(default_value = "bitbucket-main")]
+        id: String,
+        /// Bitbucket Base URL [default: https://api.bitbucket.org/2.0]
+        #[arg(long)]
+        url: Option<String>,
+        /// Bitbucket Username
+        #[arg(long)]
+        username: Option<String>,
+        /// App Password / Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing App Password
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Workspace name / slug
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Comma-separated repository slugs
+        #[arg(long)]
+        repos: Option<String>,
+    },
+    /// Configure Figma connector
+    Figma {
+        /// Connector ID (e.g. "figma-designs")
+        #[arg(default_value = "figma-designs")]
+        id: String,
+        /// Figma Personal Access Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing Figma PAT
+        #[arg(long)]
+        token_env: Option<String>,
+        /// Comma-separated Figma file keys
+        #[arg(long)]
+        file_keys: Option<String>,
     },
     /// Configure Markdown connector
     Markdown {
@@ -599,6 +749,298 @@ async fn main() -> Result<()> {
                     println!("GitHub connector '{}' updated successfully!", id);
                 }
 
+                ConfigSubcommands::Gitlab {
+                    id,
+                    url,
+                    token,
+                    token_env,
+                    projects,
+                    add_projects,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://gitlab.com".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+
+                    let mut project_list = if let Some(p) = projects {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.projects.clone()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_projects {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !project_list.contains(&new_p) {
+                                project_list.push(new_p);
+                            }
+                        }
+                    }
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "gitlab".to_string(),
+                            instance_url: final_url,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            projects: project_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("GitLab connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Notion {
+                    id,
+                    token,
+                    token_env,
+                    database_ids,
+                    page_ids,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+
+                    let db_list: Vec<String> = database_ids
+                        .map(|d| d.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.database_ids.clone()).unwrap_or_default());
+
+                    let page_list: Vec<String> = page_ids
+                        .map(|p| p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.page_ids.clone()).unwrap_or_default());
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "notion".to_string(),
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            database_ids: db_list,
+                            page_ids: page_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Notion connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Linear {
+                    id,
+                    url,
+                    token,
+                    token_env,
+                    sync_comments,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://api.linear.app/graphql".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_comments = sync_comments.or_else(|| existing.as_ref().and_then(|e| e.sync_comments)).or(Some(true));
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "linear".to_string(),
+                            instance_url: final_url,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            sync_comments: final_comments,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Linear connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Openapi {
+                    id,
+                    path,
+                    paths,
+                    add_paths,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_path = path.or_else(|| existing.as_ref().and_then(|e| e.path.clone()));
+
+                    let mut path_list = if let Some(p) = paths {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.get_paths()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_paths {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !path_list.contains(&new_p) {
+                                path_list.push(new_p);
+                            }
+                        }
+                    }
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "openapi".to_string(),
+                            path: final_path,
+                            paths: path_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("OpenAPI connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Asana {
+                    id,
+                    token,
+                    token_env,
+                    workspace,
+                    projects,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_workspace = workspace.or_else(|| existing.as_ref().and_then(|e| e.workspace.clone()));
+
+                    let project_list = if let Some(p) = projects {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.projects.clone()).unwrap_or_default()
+                    };
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "asana".to_string(),
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            workspace: final_workspace,
+                            projects: project_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Asana connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::AzureDevops {
+                    id,
+                    url,
+                    token,
+                    token_env,
+                    org,
+                    projects,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://dev.azure.com".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_org = org.or_else(|| existing.as_ref().and_then(|e| e.organization.clone()));
+
+                    let project_list = if let Some(p) = projects {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.projects.clone()).unwrap_or_default()
+                    };
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "azure_devops".to_string(),
+                            instance_url: final_url,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            organization: final_org,
+                            projects: project_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Azure DevOps connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Bitbucket {
+                    id,
+                    url,
+                    username,
+                    token,
+                    token_env,
+                    workspace,
+                    repos,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://api.bitbucket.org/2.0".to_string());
+                    let final_user = username.or_else(|| existing.as_ref().map(|e| e.email.clone())).unwrap_or_default();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_workspace = workspace.or_else(|| existing.as_ref().and_then(|e| e.workspace.clone()));
+
+                    let repo_list = if let Some(r) = repos {
+                        r.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.repos.clone()).unwrap_or_default()
+                    };
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "bitbucket".to_string(),
+                            instance_url: final_url,
+                            email: final_user,
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            workspace: final_workspace,
+                            repos: repo_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Bitbucket connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Figma {
+                    id,
+                    token,
+                    token_env,
+                    file_keys,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+
+                    let keys_list: Vec<String> = file_keys
+                        .map(|k| k.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.file_keys.clone()).unwrap_or_default());
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "figma".to_string(),
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            file_keys: keys_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Figma connector '{}' updated successfully!", id);
+                }
+
                 ConfigSubcommands::Clickup {
                     id,
                     url,
@@ -757,31 +1199,10 @@ async fn main() -> Result<()> {
             println!("Starting Atlas context engine synchronization...\n");
 
             for (id, connector_cfg) in target_connectors {
-                let conn_instance = match connector_cfg.provider.as_str() {
-                    "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
-                    "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
-                    "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
-                    "clickup" => ConnectorInstance::Clickup(ClickupConnector::new(id.clone(), connector_cfg)?),
-                    "linear" => ConnectorInstance::Linear(LinearConnector::new(id.clone(), connector_cfg)?),
-                    "asana" => ConnectorInstance::Asana(AsanaConnector::new(id.clone(), connector_cfg)?),
-                    "azure_devops" => ConnectorInstance::AzureDevops(AzureDevopsConnector::new(id.clone(), connector_cfg)?),
-                    "gitlab" => ConnectorInstance::Gitlab(GitlabConnector::new(id.clone(), connector_cfg)?),
-                    "bitbucket" => ConnectorInstance::Bitbucket(BitbucketConnector::new(id.clone(), connector_cfg)?),
-                    "openapi" => ConnectorInstance::Openapi(OpenapiConnector::new(id.clone(), connector_cfg)?),
-                    "figma" => ConnectorInstance::Figma(FigmaConnector::new(id.clone(), connector_cfg)?),
-                    "notion" => ConnectorInstance::Notion(NotionConnector::new(id.clone(), connector_cfg)?),
-                    "spreadsheet" => ConnectorInstance::Spreadsheet(SpreadsheetConnector::new(id.clone(), connector_cfg)?),
-                    "markdown" => {
-                        let path_str = connector_cfg.path.as_deref().unwrap_or(".");
-                        let mut conn = MarkdownConnector::new(id.clone(), path_str);
-                        if !connector_cfg.glob_patterns.is_empty() {
-                            conn = conn.with_glob_patterns(connector_cfg.glob_patterns.clone());
-                        }
-                        ConnectorInstance::Markdown(conn)
-                    }
-                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(id.clone(), &connector_cfg)?),
-                    other => {
-                        println!("Skipping unknown provider '{}' for ID '{}'", other, id);
+                let conn_instance = match ConnectorInstance::build(&id, &connector_cfg) {
+                    Ok(c) => c,
+                    Err(err) => {
+                        println!("Failed to initialize connector '{}': {:#}", id, err);
                         continue;
                     }
                 };
@@ -1198,8 +1619,24 @@ async fn main() -> Result<()> {
                     if let Some(conn_cfg) = cfg.connectors.get(&id) {
                         println!("  [✓] Configuration loaded for provider '{}'", conn_cfg.provider);
                         println!("  [✓] Storage path verified: {:?}", db_path);
-                        println!("  [✓] Resilience manager initialized with max concurrency");
-                        println!("\nResult: Connector '{}' is valid and ready to sync.", id);
+                        match ConnectorInstance::build(&id, conn_cfg) {
+                            Ok(conn_instance) => {
+                                match conn_instance.verify().await {
+                                    Ok(msg) => {
+                                        println!("  [✓] Live Connectivity: {}", msg);
+                                        println!("\nResult: Connector '{}' is valid and verified healthy.", id);
+                                    }
+                                    Err(err) => {
+                                        println!("  [✗] Live Connectivity Error: {:#}", err);
+                                        println!("\nResult: Connector '{}' verification failed.", id);
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                println!("  [✗] Initialization Error: {:#}", err);
+                                println!("\nResult: Connector '{}' configuration could not be initialized.", id);
+                            }
+                        }
                     } else {
                         println!("  [✗] Connector '{}' not found in configuration.", id);
                     }
@@ -1211,7 +1648,7 @@ async fn main() -> Result<()> {
                     println!("│ CONNECTOR HEALTH MONITORING REPORT                                                     │");
                     println!("├─────────────────┬──────────┬────────────┬───────┬────────────┬───────────────┬─────────┤");
                     println!("│ CONNECTOR ID    │ PROVIDER │ STATE      │ SCORE │ P95 LATENCY│ SUCCESS RATE  │ DETAILS │");
-                    println!("├─────────────────┼──────────┼────────────┼───────┼────────────┼───────────────┼─────────┤");
+                    println!("├─────────────────┬──────────┬────────────┬───────┬────────────┬───────────────┬─────────┤");
                     for r in reports {
                         println!(
                             "│ {:<15} │ {:<8} │ {:<10} │ {:3}   │ {:4} ms     │ {:5.1}%        │ {:<7} │",
@@ -1258,31 +1695,10 @@ async fn main() -> Result<()> {
                     }
 
                     for (id, connector_cfg) in target_connectors {
-                        let conn_instance = match connector_cfg.provider.as_str() {
-                            "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg.clone())?),
-                            "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg.clone())?),
-                            "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg.clone())?),
-                            "clickup" => ConnectorInstance::Clickup(ClickupConnector::new(id.clone(), connector_cfg.clone())?),
-                            "linear" => ConnectorInstance::Linear(LinearConnector::new(id.clone(), connector_cfg.clone())?),
-                            "asana" => ConnectorInstance::Asana(AsanaConnector::new(id.clone(), connector_cfg.clone())?),
-                            "azure_devops" => ConnectorInstance::AzureDevops(AzureDevopsConnector::new(id.clone(), connector_cfg.clone())?),
-                            "gitlab" => ConnectorInstance::Gitlab(GitlabConnector::new(id.clone(), connector_cfg.clone())?),
-                            "bitbucket" => ConnectorInstance::Bitbucket(BitbucketConnector::new(id.clone(), connector_cfg.clone())?),
-                            "openapi" => ConnectorInstance::Openapi(OpenapiConnector::new(id.clone(), connector_cfg.clone())?),
-                            "figma" => ConnectorInstance::Figma(FigmaConnector::new(id.clone(), connector_cfg.clone())?),
-                            "notion" => ConnectorInstance::Notion(NotionConnector::new(id.clone(), connector_cfg.clone())?),
-                            "spreadsheet" => ConnectorInstance::Spreadsheet(SpreadsheetConnector::new(id.clone(), connector_cfg.clone())?),
-                            "markdown" => {
-                                let path_str = connector_cfg.path.as_deref().unwrap_or(".");
-                                let mut conn = MarkdownConnector::new(id.clone(), path_str);
-                                if !connector_cfg.glob_patterns.is_empty() {
-                                    conn = conn.with_glob_patterns(connector_cfg.glob_patterns.clone());
-                                }
-                                ConnectorInstance::Markdown(conn)
-                            }
-                            "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(id.clone(), &connector_cfg)?),
-                            other => {
-                                println!("Skipping unknown provider '{}' for ID '{}'", other, id);
+                        let conn_instance = match ConnectorInstance::build(&id, &connector_cfg) {
+                            Ok(c) => c,
+                            Err(err) => {
+                                println!("Failed to initialize connector '{}': {:#}", id, err);
                                 continue;
                             }
                         };
@@ -1295,12 +1711,15 @@ async fn main() -> Result<()> {
                             target: provider.clone(),
                         });
 
+                        let start_time = std::time::Instant::now();
                         match SyncEngine::run_sync(&conn_instance, &storage, full).await {
                             Ok(summary) => {
+                                let elapsed = start_time.elapsed().as_secs_f64();
+                                let latency_ms = (elapsed * 1000.0) as u64;
                                 bus.publish(atlas_core::progress::ProgressEvent::SyncCompleted {
                                     connector_id: cid.clone(),
                                     total_synced: summary.inserted as u64 + summary.updated as u64,
-                                    elapsed_secs: 1.0,
+                                    elapsed_secs: elapsed,
                                 });
 
                                 let report = atlas_core::health::HealthReport::new(
@@ -1308,13 +1727,15 @@ async fn main() -> Result<()> {
                                     &provider,
                                     true,
                                     true,
-                                    100,
+                                    latency_ms,
                                     100.0,
                                     format!("Fetched {}, Inserted {}, Skipped {}", summary.fetched, summary.inserted, summary.skipped),
                                 );
                                 let _ = storage.save_health_report(&report);
                             }
                             Err(e) => {
+                                let elapsed = start_time.elapsed().as_secs_f64();
+                                let latency_ms = (elapsed * 1000.0) as u64;
                                 bus.publish(atlas_core::progress::ProgressEvent::SyncFailed {
                                     connector_id: cid.clone(),
                                     error: e.to_string(),
@@ -1325,7 +1746,7 @@ async fn main() -> Result<()> {
                                     &provider,
                                     false,
                                     false,
-                                    1000,
+                                    latency_ms,
                                     0.0,
                                     e.to_string(),
                                 );
