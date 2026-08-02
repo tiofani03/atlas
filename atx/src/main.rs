@@ -333,7 +333,7 @@ enum ConfigSubcommands {
         /// Environment variable containing Personal API Token
         #[arg(long)]
         token_env: Option<String>,
-        /// Comma-separated Workspace/Team IDs (required for sync)
+        /// Comma-separated Workspace/Team IDs. Empty syncs all workspaces authorized for the token.
         #[arg(long)]
         workspaces: Option<String>,
         /// Comma-separated Space IDs to filter

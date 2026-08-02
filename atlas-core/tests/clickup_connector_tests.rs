@@ -73,3 +73,60 @@ async fn test_clickup_connector_maps_tasks_to_ticket_artifacts() -> anyhow::Resu
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_clickup_connector_discovers_workspaces_when_not_configured() -> anyhow::Result<()> {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/team"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "teams": [
+                { "id": "workspace-1", "name": "Engineering" }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/team/workspace-1/task"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "tasks": [
+                {
+                    "id": "task-1",
+                    "name": "Discovered workspace task",
+                    "description": "Created from auto-discovered workspace",
+                    "url": "https://app.clickup.com/t/task-1",
+                    "date_updated": "1783065600000",
+                    "status": { "status": "open" }
+                }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config = ConnectorConfig {
+        provider: "clickup".to_string(),
+        instance_url: mock_server.uri(),
+        email: String::new(),
+        api_token: Some("pk_test".to_string()),
+        api_token_env: None,
+        projects: vec![],
+        spaces: vec![],
+        repos: vec![],
+        path: None,
+        paths: vec![],
+        glob_patterns: vec![],
+    };
+
+    let connector = ClickUpConnector::new("clickup-test".to_string(), config)?;
+    let artifacts = connector.fetch_modified(None).await?;
+
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0].source_id, "task-1");
+    assert!(artifacts[0]
+        .tags
+        .contains(&"workspace:workspace-1".to_string()));
+
+    Ok(())
+}

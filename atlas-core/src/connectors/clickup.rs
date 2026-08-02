@@ -210,6 +210,55 @@ impl ClickUpConnector {
             metadata: task,
         })
     }
+
+    async fn resolve_workspace_ids(&self, base_url: &str) -> Result<Vec<String>> {
+        let configured_ids: Vec<String> = self
+            .config
+            .projects
+            .iter()
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty())
+            .collect();
+
+        if !configured_ids.is_empty() {
+            return Ok(configured_ids);
+        }
+
+        let url = format!("{}/team", base_url);
+        let res =
+            self.client.get(&url).send().await.with_context(|| {
+                format!("Failed to fetch authorized ClickUp workspaces ({})", url)
+            })?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            anyhow::bail!("ClickUp API error ({}): {}", status, body);
+        }
+
+        let json: Value = res.json().await?;
+        let workspace_ids = json
+            .get("teams")
+            .and_then(|v| v.as_array())
+            .map(|teams| {
+                teams
+                    .iter()
+                    .filter_map(|team| team.get("id").and_then(|v| v.as_str()))
+                    .map(|id| id.trim().to_string())
+                    .filter(|id| !id.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        if workspace_ids.is_empty() {
+            anyhow::bail!(
+                "ClickUp connector '{}' could not find authorized workspaces for this token",
+                self.id
+            );
+        }
+
+        Ok(workspace_ids)
+    }
 }
 
 #[async_trait::async_trait]
@@ -225,21 +274,9 @@ impl Connector for ClickUpConnector {
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let base_url = self.base_url();
         let mut all_artifacts = Vec::new();
-        let workspace_ids = &self.config.projects;
+        let workspace_ids = self.resolve_workspace_ids(&base_url).await?;
 
-        if workspace_ids.is_empty() {
-            anyhow::bail!(
-                "ClickUp connector '{}' requires at least one Workspace/Team ID",
-                self.id
-            );
-        }
-
-        for workspace_id in workspace_ids {
-            let workspace_id = workspace_id.trim();
-            if workspace_id.is_empty() {
-                continue;
-            }
-
+        for workspace_id in &workspace_ids {
             let mut page = 0;
             loop {
                 let url = format!("{}/team/{}/task", base_url, workspace_id);
@@ -296,7 +333,8 @@ impl Connector for ClickUpConnector {
                 let count = tasks.len();
                 let now = Utc::now();
                 for task in tasks {
-                    if let Some(artifact) = self.task_to_artifact(task, workspace_id, now) {
+                    if let Some(artifact) = self.task_to_artifact(task, workspace_id.as_str(), now)
+                    {
                         all_artifacts.push(artifact);
                     }
                 }
