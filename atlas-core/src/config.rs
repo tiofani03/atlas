@@ -72,6 +72,8 @@ pub struct ConnectorConfig {
     #[serde(default)]
     pub database_ids: Vec<String>,
     #[serde(default)]
+    pub page_ids: Vec<String>,
+    #[serde(default)]
     pub spreadsheet_ids: Vec<String>,
     #[serde(default)]
     pub service_account_file: Option<String>,

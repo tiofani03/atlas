@@ -500,6 +500,15 @@ impl Connector for ClickupConnector {
         "clickup"
     }
 
+    async fn verify(&self) -> Result<String> {
+        let teams = self.fetch_teams().await?;
+        if teams.is_empty() {
+            anyhow::bail!("ClickUp authentication succeeded but no teams/workspaces were accessible.");
+        }
+        let team_names: Vec<String> = teams.iter().map(|t| t.name.clone().unwrap_or(t.id.clone())).collect();
+        Ok(format!("Connected to ClickUp workspace(s): {}", team_names.join(", ")))
+    }
+
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         if self.config.enabled == Some(false) {
             info!("ClickUp connector [{}] is disabled in config.", self.id);

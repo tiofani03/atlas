@@ -95,6 +95,18 @@ impl MarkdownConnector {
         }
     }
 
+    pub fn new_from_config(id: impl Into<String>, cfg: &crate::config::ConnectorConfig) -> Self {
+        let paths: Vec<PathBuf> = cfg.get_paths().into_iter().map(PathBuf::from).collect();
+        let mut conn = Self::new(id, ".");
+        if !paths.is_empty() {
+            conn = conn.with_paths(paths);
+        }
+        if !cfg.glob_patterns.is_empty() {
+            conn = conn.with_glob_patterns(cfg.glob_patterns.clone());
+        }
+        conn
+    }
+
     pub fn with_paths(mut self, paths: Vec<PathBuf>) -> Self {
         if !paths.is_empty() {
             self.root_paths = paths;
@@ -534,6 +546,19 @@ impl crate::connectors::Connector for MarkdownConnector {
 
     fn provider(&self) -> &str {
         "markdown"
+    }
+
+    async fn verify(&self) -> Result<String> {
+        let mut existing = Vec::new();
+        for p in &self.root_paths {
+            if p.exists() {
+                existing.push(p.display().to_string());
+            }
+        }
+        if existing.is_empty() && !self.root_paths.is_empty() {
+            anyhow::bail!("None of the configured Markdown paths exist on the filesystem: {:?}", self.root_paths);
+        }
+        Ok(format!("Markdown paths verified: {}", existing.join(", ")))
     }
 
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
