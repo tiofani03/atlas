@@ -910,7 +910,7 @@ pub async fn save_local_git_connector(
 
 
 pub async fn select_folder() -> impl IntoResponse {
-    let path = tokio::task::spawn_blocking(|| {
+    let path: Option<String> = tokio::task::spawn_blocking(|| {
         #[cfg(target_os = "macos")]
         {
             let output = std::process::Command::new("osascript")

@@ -335,7 +335,7 @@ enum ConfigSubcommands {
         /// Environment variable containing API Token
         #[arg(long)]
         token_env: Option<String>,
-        /// ClickUp Workspace ID
+        /// ClickUp Workspace ID. Empty syncs all workspaces authorized for the token.
         #[arg(long)]
         workspace: Option<String>,
         /// Comma-separated space keys or IDs
@@ -1064,4 +1064,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-

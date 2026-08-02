@@ -129,7 +129,7 @@ export const ConfigureClickupModal: React.FC<ModalProps> = ({ isOpen, onClose, o
               type="text"
               value={workspace}
               onChange={(e) => setWorkspace(e.target.value)}
-              placeholder="e.g. 123456"
+              placeholder="Optional - leave empty to sync all authorized workspaces"
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-purple-500 font-mono"
             />
           </div>

@@ -18,7 +18,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/clear", post(status::clear_data))
         .route("/api/data/clear", post(status::clear_data))
         .route("/api/connectors", get(connectors::list_connectors))
-        .route("/api/connectors/jira", post(connectors::save_jira_connector))
+        .route(
+            "/api/connectors/jira",
+            post(connectors::save_jira_connector),
+        )
         .route(
             "/api/connectors/confluence",
             post(connectors::save_confluence_connector),
@@ -26,6 +29,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/connectors/github",
             post(connectors::save_github_connector),
+        )
+        .route(
+            "/api/connectors/clickup",
+            post(connectors::save_clickup_connector),
         )
         .route(
             "/api/connectors/markdown",
@@ -83,10 +90,7 @@ pub fn create_router(state: AppState) -> Router {
             "/api/connectors/validate",
             post(connectors::validate_credentials),
         )
-        .route(
-            "/api/connectors/delete",
-            post(connectors::delete_connector),
-        )
+        .route("/api/connectors/delete", post(connectors::delete_connector))
         .route("/api/sync", post(sync::trigger_sync))
         .route("/api/sync/status", get(sync::get_sync_status))
         .route("/api/search", get(search::search_objects))
