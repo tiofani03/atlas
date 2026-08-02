@@ -493,3 +493,53 @@ pub async fn select_folder() -> impl IntoResponse {
         )
     }
 }
+
+#[derive(Deserialize)]
+pub struct DeleteConnectorPayload {
+    pub id: String,
+    pub clear_data: Option<bool>,
+}
+
+pub async fn delete_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<DeleteConnectorPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            );
+        }
+    };
+
+    let conn_cfg = cfg.connectors.remove(&payload.id);
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    let mut cleared_count = 0;
+    if payload.clear_data.unwrap_or(true) {
+        if let Ok(storage) = state.get_storage() {
+            let provider_opt = conn_cfg.as_ref().map(|c| c.provider.as_str());
+            let repos = conn_cfg.as_ref().map(|c| c.repos.clone()).unwrap_or_default();
+            cleared_count = storage
+                .clear_connector_data(&payload.id, provider_opt, &repos)
+                .unwrap_or(0);
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "id": payload.id,
+            "cleared_artifacts": cleared_count
+        })),
+    )
+}

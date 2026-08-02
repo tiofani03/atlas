@@ -4,7 +4,7 @@ mod explain;
 use anyhow::Result;
 use atlas_core::{
     ConfluenceConnector, Config, Connector, ConnectorConfig, ConnectorInstance, GithubConnector,
-    JiraConnector, Storage, SyncEngine,
+    JiraConnector, LocalGitConnector, MarkdownConnector, Storage, SyncEngine,
 };
 use clap::{Parser, Subcommand};
 
@@ -125,6 +125,18 @@ enum Commands {
         /// Artifact ID, source ID, or repository name (when target type is specified)
         target_id: Option<String>,
 
+        /// Relationship graph traversal depth limit [default: 2]
+        #[arg(short, long, default_value_t = 2)]
+        depth: usize,
+
+        /// Display stage-level timing telemetry profiling breakdown
+        #[arg(long)]
+        profile: bool,
+
+        /// Override maximum related commits limit
+        #[arg(long)]
+        max_commits: Option<usize>,
+
         /// Output result as JSON
         #[arg(long)]
         json: bool,
@@ -163,8 +175,12 @@ enum Commands {
     /// Show storage statistics, connector status, and graph size
     Status,
 
-    /// Clear all synchronized context data and reset SQLite index
+    /// Clear synchronized context data and reset SQLite index
     Reset {
+        /// Optional connector ID to clear specifically
+        #[arg(short = 'C', long)]
+        connector: Option<String>,
+
         /// Force clear without asking for confirmation
         #[arg(short, long)]
         force: bool,
@@ -172,6 +188,10 @@ enum Commands {
 
     /// Alias for reset command
     Clear {
+        /// Optional connector ID to clear specifically
+        #[arg(short = 'C', long)]
+        connector: Option<String>,
+
         /// Force clear without asking for confirmation
         #[arg(short, long)]
         force: bool,
@@ -508,6 +528,15 @@ async fn main() -> Result<()> {
                     "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
                     "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
                     "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
+                    "markdown" => {
+                        let path_str = connector_cfg.path.as_deref().unwrap_or(".");
+                        let mut conn = MarkdownConnector::new(id.clone(), path_str);
+                        if !connector_cfg.glob_patterns.is_empty() {
+                            conn = conn.with_glob_patterns(connector_cfg.glob_patterns.clone());
+                        }
+                        ConnectorInstance::Markdown(conn)
+                    }
+                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(id.clone(), &connector_cfg)?),
                     other => {
                         println!("Skipping unknown provider '{}' for ID '{}'", other, id);
                         continue;
@@ -644,6 +673,9 @@ async fn main() -> Result<()> {
         Commands::Context {
             target,
             target_id,
+            depth,
+            profile,
+            max_commits,
             json,
             verbose,
             raw,
@@ -657,7 +689,12 @@ async fn main() -> Result<()> {
             };
 
             let builder = atlas_core::ContextBuilder::new(&storage);
-            let options = atlas_core::ContextOptions::default();
+            let mut options = atlas_core::ContextOptions::default();
+            options.depth = depth;
+            options.profile = profile;
+            if let Some(mc) = max_commits {
+                options.max_commits = mc;
+            }
             let pkg = builder.build(kind_param, id_param, &options)?;
 
             if json {
@@ -727,27 +764,50 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Reset { force } | Commands::Clear { force } => {
+        Commands::Reset { connector, force } | Commands::Clear { connector, force } => {
             let cfg = Config::load_from_path(&config_path)?;
             let db_path = cfg.resolve_db_path();
             let storage = Storage::new(&db_path)?;
 
-            if !force {
-                println!("⚠️  WARNING: This will permanently delete all synchronized knowledge artifacts, relationships, and search indexes.");
-                print!("Are you sure you want to clear all data? [y/N]: ");
-                use std::io::Write;
-                std::io::stdout().flush()?;
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                let trimmed = input.trim().to_lowercase();
-                if trimmed != "y" && trimmed != "yes" {
-                    println!("Operation cancelled.");
-                    return Ok(());
-                }
-            }
+            if let Some(target_id) = connector {
+                let conn_cfg = cfg.connectors.get(&target_id);
+                let provider_opt = conn_cfg.map(|c| c.provider.as_str());
+                let repos = conn_cfg.map(|c| c.repos.clone()).unwrap_or_default();
 
-            storage.clear_all_data()?;
-            println!("✨ Magic Reset Complete: All engineering context data has been cleared!");
+                if !force {
+                    println!("⚠️  WARNING: This will permanently delete synchronized artifacts for connector '{}'.", target_id);
+                    print!("Are you sure you want to clear data for '{}'? [y/N]: ", target_id);
+                    use std::io::Write;
+                    std::io::stdout().flush()?;
+                    let mut input = String::new();
+                    std::io::stdin().read_line(&mut input)?;
+                    let trimmed = input.trim().to_lowercase();
+                    if trimmed != "y" && trimmed != "yes" {
+                        println!("Operation cancelled.");
+                        return Ok(());
+                    }
+                }
+
+                let count = storage.clear_connector_data(&target_id, provider_opt, &repos)?;
+                println!("✨ Reset Complete: Cleared {} artifacts for connector '{}'!", count, target_id);
+            } else {
+                if !force {
+                    println!("⚠️  WARNING: This will permanently delete all synchronized knowledge artifacts, relationships, and search indexes.");
+                    print!("Are you sure you want to clear all data? [y/N]: ");
+                    use std::io::Write;
+                    std::io::stdout().flush()?;
+                    let mut input = String::new();
+                    std::io::stdin().read_line(&mut input)?;
+                    let trimmed = input.trim().to_lowercase();
+                    if trimmed != "y" && trimmed != "yes" {
+                        println!("Operation cancelled.");
+                        return Ok(());
+                    }
+                }
+
+                storage.clear_all_data()?;
+                println!("✨ Magic Reset Complete: All engineering context data has been cleared!");
+            }
         }
 
         Commands::Mcp => {

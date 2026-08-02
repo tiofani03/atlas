@@ -353,9 +353,8 @@ impl LocalGitConnector {
         cmd.arg("-C")
             .arg(&repo.root_path)
             .arg("log")
-            .arg("-n")
-            .arg("50")
-            .arg("--pretty=format:COMMIT_START%n%H%n%P%n%an%n%ae%n%at%n%s%n%b%nCOMMIT_END");
+            .arg("--all")
+            .arg("--pretty=format:%H%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%b%x04");
 
         if let Some(since_time) = since {
             cmd.arg(format!("--since={}", since_time.to_rfc3339()));
@@ -367,35 +366,33 @@ impl LocalGitConnector {
         };
 
         let mut commits = Vec::new();
-        let blocks = output.split("COMMIT_START\n");
+        let blocks = output.split('\x04');
 
         for block in blocks {
-            let block = block.trim();
+            let block = block.trim_matches(|c| c == '\n' || c == '\r');
             if block.is_empty() {
                 continue;
             }
 
-            let lines: Vec<&str> = block.lines().collect();
-            if lines.len() < 6 {
+            let fields: Vec<&str> = block.split('\x00').collect();
+            if fields.len() < 6 {
                 continue;
             }
 
-            let sha = lines[0].to_string();
-            let parent_shas: Vec<String> = lines[1]
+            let sha = fields[0].trim().to_string();
+            if sha.is_empty() {
+                continue;
+            }
+
+            let parent_shas: Vec<String> = fields[1]
                 .split_whitespace()
                 .map(|s| s.to_string())
                 .collect();
-            let author_name = lines[2].to_string();
-            let author_email = lines[3].to_string();
-            let timestamp_sec = lines[4].parse::<i64>().unwrap_or(0);
-            let subject = lines[5].to_string();
-
-            let body_lines = if lines.len() > 6 {
-                let end_idx = lines.iter().position(|l| *l == "COMMIT_END").unwrap_or(lines.len());
-                lines[6..end_idx].join("\n")
-            } else {
-                String::new()
-            };
+            let author_name = fields[2].to_string();
+            let author_email = fields[3].to_string();
+            let timestamp_sec = fields[4].trim().parse::<i64>().unwrap_or(0);
+            let subject = fields[5].to_string();
+            let body_lines = fields.get(6).map(|b| b.trim()).unwrap_or("").to_string();
 
             let committed_at = DateTime::from_timestamp(timestamp_sec, 0).unwrap_or_else(Utc::now);
 
@@ -417,14 +414,18 @@ impl LocalGitConnector {
 
             let checksum = KnowledgeArtifact::compute_checksum(&subject, Some(&author_name), &body_lines, &[]);
 
+            let is_merge = parent_shas.len() > 1;
+
             let commit_meta = serde_json::json!({
                 "repo_id": repo.id,
                 "repo_name": repo.name,
                 "commit_sha": sha,
                 "parent_shas": parent_shas,
+                "parents": parent_shas,
                 "author_name": author_name,
                 "author_email": author_email,
                 "committed_at": committed_at.to_rfc3339(),
+                "is_merge": is_merge,
             });
 
             let artifact = KnowledgeArtifact {
@@ -460,9 +461,15 @@ impl LocalGitConnector {
             .into_iter()
             .filter_entry(|e| {
                 let file_name = e.file_name().to_string_lossy();
-                // Filter out .git, target, node_modules, .idea, etc.
+                // Filter out .git, target, build, out, node_modules, .idea, etc.
                 !file_name.starts_with(".git")
                     && file_name != "target"
+                    && file_name != "build"
+                    && file_name != "out"
+                    && file_name != ".gradle"
+                    && file_name != ".cxx"
+                    && file_name != "bin"
+                    && file_name != "obj"
                     && file_name != "node_modules"
                     && file_name != ".idea"
                     && file_name != "vendor"
@@ -656,6 +663,58 @@ mod tests {
         assert!(artifacts.iter().any(|a| a.title == "README"));
         assert!(artifacts.iter().any(|a| a.title == "arch"));
         assert_eq!(artifacts[0].provider, "local_git");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_real_git_repo_traversal_and_watermark() -> Result<()> {
+        let dir = TempDir::new()?;
+        let repo_path = dir.path();
+
+        // Run real git commands to build a commit graph
+        let run_git = |args: &[&str]| -> bool {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo_path)
+                .args(args)
+                .output()
+                .expect("failed git command");
+            output.status.success()
+        };
+
+        assert!(run_git(&["init"]));
+        assert!(run_git(&["config", "user.name", "Test User"]));
+        assert!(run_git(&["config", "user.email", "test@example.com"]));
+
+        fs::write(repo_path.join("file1.txt"), "hello")?;
+        assert!(run_git(&["add", "file1.txt"]));
+        assert!(run_git(&["commit", "-m", "Initial commit"]));
+
+        fs::write(repo_path.join("file2.txt"), "world")?;
+        assert!(run_git(&["add", "file2.txt"]));
+        assert!(run_git(&["commit", "-m", "Second commit"]));
+
+        // Create feature branch
+        assert!(run_git(&["checkout", "-b", "feature/test"]));
+        fs::write(repo_path.join("file3.txt"), "feature")?;
+        assert!(run_git(&["add", "file3.txt"]));
+        assert!(run_git(&["commit", "-m", "Feature commit"]));
+
+        // Switch back to default branch
+        if !run_git(&["checkout", "master"]) {
+            let _ = run_git(&["checkout", "main"]);
+        }
+
+        let local_repo = LocalGitRepository::open(repo_path)?;
+        let connector = LocalGitConnector::new("git-real-test", RepositoryRegistry::new());
+
+        let commit_artifacts = connector.fetch_commit_artifacts(&local_repo, None);
+        // All 3 commits across both branches must be captured via --all!
+        assert_eq!(commit_artifacts.len(), 3, "Expected 3 commits captured via --all DAG traversal");
+        assert!(commit_artifacts.iter().any(|c| c.title == "Initial commit"));
+        assert!(commit_artifacts.iter().any(|c| c.title == "Second commit"));
+        assert!(commit_artifacts.iter().any(|c| c.title == "Feature commit"));
 
         Ok(())
     }

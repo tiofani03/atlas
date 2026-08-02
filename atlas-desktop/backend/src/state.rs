@@ -7,6 +7,10 @@ use tokio::sync::RwLock;
 pub struct ActiveSyncProgress {
     pub is_running: bool,
     pub current_connector: Option<String>,
+    pub phase: Option<String>,
+    pub current: usize,
+    pub total: usize,
+    pub percentage: f32,
     pub fetched: usize,
     pub inserted: usize,
     pub updated: usize,

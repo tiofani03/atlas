@@ -14,10 +14,10 @@ pub use connectors::{
 };
 pub use context::{
     AiBriefing, CategoryAvailability, CategoryScore, CompletenessReport, ContextBuilder, ContextOptions, ContextPackage,
-    DependencyEdge, EngineeringReadiness, LabeledArtifact, NextAction, RecommendedItem, SourceInfo,
+    ContextTelemetry, DependencyEdge, EngineeringReadiness, LabeledArtifact, NextAction, RecommendedItem, SourceInfo,
 };
 pub use domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
-pub use storage::{Storage, StorageStats};
+pub use storage::{ArtifactHeader, Storage, StorageStats};
 pub use sync::{SyncEngine, SyncSummary};
 
 

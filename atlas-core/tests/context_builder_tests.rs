@@ -164,3 +164,67 @@ fn test_context_builder_issue_flow() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_context_builder_telemetry_and_depth() -> anyhow::Result<()> {
+    let tmp_file = NamedTempFile::new()?;
+    let storage = Storage::new(tmp_file.path())?;
+    let now = Utc::now();
+
+    let issue = KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("jira", "https://jira.example.com", "INIT-488"),
+        kind: ArtifactKind::Issue,
+        title: "Scale context engine for 100k artifacts".to_string(),
+        summary: Some("Optimize retrieval latency".to_string()),
+        body: "Full details of optimization plan".to_string(),
+        provider: "jira".to_string(),
+        source_id: "INIT-488".to_string(),
+        source_url: "https://jira.example.com/browse/INIT-488".to_string(),
+        repository: Some("atlas".to_string()),
+        tags: vec!["performance".to_string()],
+        relationships: vec![],
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: "cs_init".to_string(),
+        metadata: serde_json::Value::Null,
+    };
+
+    let pr = KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("github", "https://api.github.com", "atlas#100"),
+        kind: ArtifactKind::PullRequest,
+        title: "perf: optimize context graph traversal".to_string(),
+        summary: Some("ID-first traversal".to_string()),
+        body: "PR details".to_string(),
+        provider: "github".to_string(),
+        source_id: "atlas#100".to_string(),
+        source_url: "https://github.com/org/atlas/pull/100".to_string(),
+        repository: Some("atlas".to_string()),
+        tags: vec![],
+        relationships: vec![ArtifactRelationship {
+            source_id: "atlas#100".to_string(),
+            target_id: "INIT-488".to_string(),
+            relationship_type: "implements".to_string(),
+        }],
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: "cs_pr_init".to_string(),
+        metadata: serde_json::Value::Null,
+    };
+    storage.upsert_artifact(&issue)?;
+    storage.upsert_artifact(&pr)?;
+
+    let builder = ContextBuilder::new(&storage);
+    let mut options = ContextOptions::default();
+    options.profile = true;
+    options.depth = 1;
+
+    let pkg = builder.build(Some("issue"), "INIT-488", &options)?;
+    assert!(pkg.telemetry.is_some());
+    let t = pkg.telemetry.unwrap();
+    assert!(t.candidate_headers_count >= 1);
+    assert_eq!(t.hydrated_artifacts_count, 1);
+    assert_eq!(pkg.related_pull_requests.len(), 1);
+    Ok(())
+}

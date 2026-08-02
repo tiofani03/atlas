@@ -307,7 +307,7 @@ impl Connector for GithubConnector {
                     });
                 }
 
-                if len < per_page || (since.is_none() && page >= 5) {
+                if len < per_page {
                     break;
                 }
                 page += 1;
@@ -513,7 +513,7 @@ impl Connector for GithubConnector {
                 }
                 }
 
-                if reached_watermark || len < per_page || (since.is_none() && pr_page >= 5) {
+                if reached_watermark || len < per_page {
                     break;
                 }
                 pr_page += 1;
@@ -617,7 +617,7 @@ impl Connector for GithubConnector {
                     });
                 }
 
-                if len < per_page || (since.is_none() && comment_page >= 3) {
+                if len < per_page {
                     break;
                 }
                 comment_page += 1;
@@ -723,7 +723,7 @@ impl Connector for GithubConnector {
                     });
                 }
 
-                if len < per_page || (since.is_none() && commit_page >= 5) {
+                if len < per_page {
                     break;
                 }
                 commit_page += 1;
