@@ -6,6 +6,16 @@ import { ConfigureConfluenceModal } from './ConfigureConfluenceModal';
 import { ConfigureGithubModal } from './ConfigureGithubModal';
 import { ConfigureMarkdownModal } from './ConfigureMarkdownModal';
 import { ConfigureLocalGitModal } from './ConfigureLocalGitModal';
+import { ConfigureClickupModal } from './ConfigureClickupModal';
+import { ConfigureLinearModal } from './ConfigureLinearModal';
+import { ConfigureGitlabModal } from './ConfigureGitlabModal';
+import { ConfigureOpenapiModal } from './ConfigureOpenapiModal';
+import { ConfigureAzureDevopsModal } from './ConfigureAzureDevopsModal';
+import { ConfigureBitbucketModal } from './ConfigureBitbucketModal';
+import { ConfigureFigmaModal } from './ConfigureFigmaModal';
+import { ConfigureNotionModal } from './ConfigureNotionModal';
+import { ConfigureAsanaModal } from './ConfigureAsanaModal';
+import { ConfigureSpreadsheetModal } from './ConfigureSpreadsheetModal';
 import {
   RefreshCw,
   Settings2,
@@ -220,6 +230,16 @@ export const ConnectorsPage: React.FC = () => {
   const [isGithubOpen, setIsGithubOpen] = useState(false);
   const [isMarkdownOpen, setIsMarkdownOpen] = useState(false);
   const [isLocalGitOpen, setIsLocalGitOpen] = useState(false);
+  const [isClickupOpen, setIsClickupOpen] = useState(false);
+  const [isLinearOpen, setIsLinearOpen] = useState(false);
+  const [isGitlabOpen, setIsGitlabOpen] = useState(false);
+  const [isOpenapiOpen, setIsOpenapiOpen] = useState(false);
+  const [isAzureDevopsOpen, setIsAzureDevopsOpen] = useState(false);
+  const [isBitbucketOpen, setIsBitbucketOpen] = useState(false);
+  const [isFigmaOpen, setIsFigmaOpen] = useState(false);
+  const [isNotionOpen, setIsNotionOpen] = useState(false);
+  const [isAsanaOpen, setIsAsanaOpen] = useState(false);
+  const [isSpreadsheetOpen, setIsSpreadsheetOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -258,8 +278,33 @@ export const ConnectorsPage: React.FC = () => {
   const githubConfig = connectors?.find((c) => c.provider === 'github');
   const markdownConfig = connectors?.find((c) => c.provider === 'markdown');
   const localGitConfig = connectors?.find((c) => c.provider === 'local_git');
+  const clickupConfig = connectors?.find((c) => c.provider === 'clickup');
+  const linearConfig = connectors?.find((c) => c.provider === 'linear');
+  const gitlabConfig = connectors?.find((c) => c.provider === 'gitlab');
+  const openapiConfig = connectors?.find((c) => c.provider === 'openapi');
+  const azureDevopsConfig = connectors?.find((c) => c.provider === 'azure_devops');
+  const bitbucketConfig = connectors?.find((c) => c.provider === 'bitbucket');
+  const figmaConfig = connectors?.find((c) => c.provider === 'figma');
+  const notionConfig = connectors?.find((c) => c.provider === 'notion');
+  const asanaConfig = connectors?.find((c) => c.provider === 'asana');
+  const spreadsheetConfig = connectors?.find((c) => c.provider === 'spreadsheet');
 
-  const configuredCount = (jiraConfig ? 1 : 0) + (confluenceConfig ? 1 : 0) + (githubConfig ? 1 : 0) + (markdownConfig ? 1 : 0) + (localGitConfig ? 1 : 0);
+  const configuredCount =
+    (jiraConfig ? 1 : 0) +
+    (confluenceConfig ? 1 : 0) +
+    (githubConfig ? 1 : 0) +
+    (markdownConfig ? 1 : 0) +
+    (localGitConfig ? 1 : 0) +
+    (clickupConfig ? 1 : 0) +
+    (linearConfig ? 1 : 0) +
+    (gitlabConfig ? 1 : 0) +
+    (openapiConfig ? 1 : 0) +
+    (azureDevopsConfig ? 1 : 0) +
+    (bitbucketConfig ? 1 : 0) +
+    (figmaConfig ? 1 : 0) +
+    (notionConfig ? 1 : 0) +
+    (asanaConfig ? 1 : 0) +
+    (spreadsheetConfig ? 1 : 0);
 
   const categories = [
     { id: 'all', label: 'All Connectors' },
@@ -421,8 +466,24 @@ export const ConnectorsPage: React.FC = () => {
               description="High-speed GraphQL sync for Linear issues, engineering cycles, roadmaps, and PR attachments."
               icon={<Zap className="w-5 h-5" />}
               iconBgClass="bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30"
-              isAvailable={false}
-              tag={{ label: 'Popular', color: 'indigo' }}
+              isAvailable={true}
+              isConfigured={!!linearConfig}
+              configuredDetails={
+                linearConfig
+                  ? {
+                      urlLabel: 'Endpoint',
+                      urlValue: linearConfig.instance_url,
+                      itemsLabel: 'Workspace & Teams',
+                      itemsValue: linearConfig.teams?.join(', ') || 'All Teams',
+                      lastSynced: linearConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsLinearOpen(true)}
+              onSync={() => linearConfig && syncMutation.mutate(linearConfig.id)}
+              onClearData={() => linearConfig && setDeleteTarget({ id: linearConfig.id, name: 'Linear' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === linearConfig?.id}
             />
 
             {/* Asana */}
@@ -432,19 +493,51 @@ export const ConnectorsPage: React.FC = () => {
               description="Sync Asana tasks, subtasks, custom field dropdowns, and project milestones."
               icon={<span className="font-bold text-lg">A</span>}
               iconBgClass="bg-rose-50 dark:bg-rose-600/20 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-500/30"
-              isAvailable={false}
-              tag={{ label: 'Popular', color: 'rose' }}
+              isAvailable={true}
+              isConfigured={!!asanaConfig}
+              configuredDetails={
+                asanaConfig
+                  ? {
+                      urlLabel: 'Workspace',
+                      urlValue: asanaConfig.workspace || 'Asana Org',
+                      itemsLabel: 'Projects',
+                      itemsValue: asanaConfig.projects?.join(', ') || 'All Projects',
+                      lastSynced: asanaConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsAsanaOpen(true)}
+              onSync={() => asanaConfig && syncMutation.mutate(asanaConfig.id)}
+              onClearData={() => asanaConfig && setDeleteTarget({ id: asanaConfig.id, name: 'Asana' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === asanaConfig?.id}
             />
 
             {/* ClickUp */}
             <ConnectorCard
               name="ClickUp"
-              subtitle="Spaces & Docs"
-              description="Sync tasks, sprints, goals, and embedded documents from ClickUp workspaces."
+              subtitle="Spaces, Lists & Tasks"
+              description="Sync tasks, subtasks, checklists, custom fields, dependencies, and workspace hierarchy from ClickUp."
               icon={<span className="font-bold text-lg">CU</span>}
-              iconBgClass="bg-pink-50 dark:bg-pink-600/20 text-pink-600 dark:text-pink-400 border-pink-200 dark:border-pink-500/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              iconBgClass="bg-purple-50 dark:bg-purple-600/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/30"
+              isAvailable={true}
+              isConfigured={!!clickupConfig}
+              configuredDetails={
+                clickupConfig
+                  ? {
+                      urlLabel: 'Base URL',
+                      urlValue: clickupConfig.instance_url,
+                      itemsLabel: 'Workspace & Lists',
+                      itemsValue: clickupConfig.workspace ? `Workspace ID: ${clickupConfig.workspace}` : 'All Workspaces',
+                      lastSynced: clickupConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsClickupOpen(true)}
+              onSync={() => clickupConfig && syncMutation.mutate(clickupConfig.id)}
+              onClearData={() => clickupConfig && setDeleteTarget({ id: clickupConfig.id, name: 'ClickUp' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === clickupConfig?.id}
             />
           </div>
         </div>
@@ -527,8 +620,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Sync Azure Work Items, Git repos, pull requests, and pipeline build logs."
               icon={<Cloud className="w-5 h-5" />}
               iconBgClass="bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-400/30"
-              isAvailable={false}
-              tag={{ label: 'Enterprise', color: 'blue' }}
+              isAvailable={true}
+              isConfigured={!!azureDevopsConfig}
+              configuredDetails={
+                azureDevopsConfig
+                  ? {
+                      urlLabel: 'Organization',
+                      urlValue: azureDevopsConfig.instance_url,
+                      itemsLabel: 'Projects',
+                      itemsValue: azureDevopsConfig.projects?.join(', ') || 'All Projects',
+                      lastSynced: azureDevopsConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsAzureDevopsOpen(true)}
+              onSync={() => azureDevopsConfig && syncMutation.mutate(azureDevopsConfig.id)}
+              onClearData={() => azureDevopsConfig && setDeleteTarget({ id: azureDevopsConfig.id, name: 'Azure DevOps' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === azureDevopsConfig?.id}
             />
 
             {/* GitLab */}
@@ -538,8 +647,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Index Merge Requests, CI/CD pipelines, and GitLab project wiki pages."
               icon={<GitBranch className="w-5 h-5" />}
               iconBgClass="bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              isAvailable={true}
+              isConfigured={!!gitlabConfig}
+              configuredDetails={
+                gitlabConfig
+                  ? {
+                      urlLabel: 'Instance URL',
+                      urlValue: gitlabConfig.instance_url,
+                      itemsLabel: 'Projects',
+                      itemsValue: gitlabConfig.projects?.join(', ') || 'All Projects',
+                      lastSynced: gitlabConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsGitlabOpen(true)}
+              onSync={() => gitlabConfig && syncMutation.mutate(gitlabConfig.id)}
+              onClearData={() => gitlabConfig && setDeleteTarget({ id: gitlabConfig.id, name: 'GitLab' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === gitlabConfig?.id}
             />
 
             {/* Bitbucket */}
@@ -549,8 +674,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Sync Bitbucket Data Center or Cloud pull requests and code comments."
               icon={<span className="font-bold text-lg">BB</span>}
               iconBgClass="bg-sky-50 dark:bg-sky-600/20 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              isAvailable={true}
+              isConfigured={!!bitbucketConfig}
+              configuredDetails={
+                bitbucketConfig
+                  ? {
+                      urlLabel: 'Workspace',
+                      urlValue: bitbucketConfig.instance_url,
+                      itemsLabel: 'Account',
+                      itemsValue: bitbucketConfig.email || 'Cloud / Server',
+                      lastSynced: bitbucketConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsBitbucketOpen(true)}
+              onSync={() => bitbucketConfig && syncMutation.mutate(bitbucketConfig.id)}
+              onClearData={() => bitbucketConfig && setDeleteTarget({ id: bitbucketConfig.id, name: 'Bitbucket' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === bitbucketConfig?.id}
             />
           </div>
         </div>
@@ -590,8 +731,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Parse OpenAPI v3 YAML/JSON schemas to give AI Agents 100% accurate API contract knowledge."
               icon={<FileCode className="w-5 h-5" />}
               iconBgClass="bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30"
-              isAvailable={false}
-              tag={{ label: 'High Impact', color: 'indigo' }}
+              isAvailable={true}
+              isConfigured={!!openapiConfig}
+              configuredDetails={
+                openapiConfig
+                  ? {
+                      urlLabel: 'Primary Path',
+                      urlValue: openapiConfig.path || openapiConfig.paths?.[0] || 'Local Spec',
+                      itemsLabel: 'Specs',
+                      itemsValue: `${openapiConfig.paths?.length || 1} Registered`,
+                      lastSynced: openapiConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsOpenapiOpen(true)}
+              onSync={() => openapiConfig && syncMutation.mutate(openapiConfig.id)}
+              onClearData={() => openapiConfig && setDeleteTarget({ id: openapiConfig.id, name: 'OpenAPI / Postman' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === openapiConfig?.id}
             />
 
             {/* Figma Design Specs */}
@@ -601,8 +758,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Extract design tokens, component properties, and layout specs directly for UI coding assist."
               icon={<Figma className="w-5 h-5" />}
               iconBgClass="bg-purple-50 dark:bg-purple-500/20 text-purple-600 dark:text-purple-300 border-purple-200 dark:border-purple-400/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              isAvailable={true}
+              isConfigured={!!figmaConfig}
+              configuredDetails={
+                figmaConfig
+                  ? {
+                      urlLabel: 'API Token',
+                      urlValue: 'Configured',
+                      itemsLabel: 'File Keys',
+                      itemsValue: `${figmaConfig.repos?.length || 1} Key(s)`,
+                      lastSynced: figmaConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsFigmaOpen(true)}
+              onSync={() => figmaConfig && syncMutation.mutate(figmaConfig.id)}
+              onClearData={() => figmaConfig && setDeleteTarget({ id: figmaConfig.id, name: 'Figma Specs' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === figmaConfig?.id}
             />
           </div>
         </div>
@@ -658,8 +831,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Direct Notion API integration to ingest engineering wikis and task databases."
               icon={<span className="font-bold text-lg">N</span>}
               iconBgClass="bg-teal-50 dark:bg-teal-600/20 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-500/30"
-              isAvailable={false}
-              tag={{ label: 'Popular', color: 'emerald' }}
+              isAvailable={true}
+              isConfigured={!!notionConfig}
+              configuredDetails={
+                notionConfig
+                  ? {
+                      urlLabel: 'Integration',
+                      urlValue: 'Notion API',
+                      itemsLabel: 'Databases',
+                      itemsValue: `${notionConfig.spaces?.length || 0} Registered`,
+                      lastSynced: notionConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsNotionOpen(true)}
+              onSync={() => notionConfig && syncMutation.mutate(notionConfig.id)}
+              onClearData={() => notionConfig && setDeleteTarget({ id: notionConfig.id, name: 'Notion Workspace' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === notionConfig?.id}
             />
 
             {/* Local Markdown */}
@@ -696,8 +885,24 @@ export const ConnectorsPage: React.FC = () => {
               description="Parse tabular data, requirement matrices, and technical specifications from spreadsheets."
               icon={<FileSpreadsheet className="w-5 h-5" />}
               iconBgClass="bg-emerald-50 dark:bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30"
-              isAvailable={false}
-              tag={{ label: 'Planned', color: 'slate' }}
+              isAvailable={true}
+              isConfigured={!!spreadsheetConfig}
+              configuredDetails={
+                spreadsheetConfig
+                  ? {
+                      urlLabel: 'File Path',
+                      urlValue: spreadsheetConfig.path || spreadsheetConfig.paths?.[0] || 'Local CSV',
+                      itemsLabel: 'Files',
+                      itemsValue: `${spreadsheetConfig.paths?.length || 1} File(s)`,
+                      lastSynced: spreadsheetConfig.last_synced_at,
+                    }
+                  : undefined
+              }
+              onConfigure={() => setIsSpreadsheetOpen(true)}
+              onSync={() => spreadsheetConfig && syncMutation.mutate(spreadsheetConfig.id)}
+              onClearData={() => spreadsheetConfig && setDeleteTarget({ id: spreadsheetConfig.id, name: 'Spreadsheets & CSV' })}
+              isSyncing={syncProgress?.is_running}
+              isClearing={deleteConnectorMutation.isPending && deleteTarget?.id === spreadsheetConfig?.id}
             />
           </div>
         </div>
@@ -754,6 +959,107 @@ export const ConnectorsPage: React.FC = () => {
           id: localGitConfig.id,
           path: localGitConfig.path,
           paths: localGitConfig.paths,
+        } : undefined}
+      />
+      <ConfigureClickupModal
+        isOpen={isClickupOpen}
+        onClose={() => setIsClickupOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={clickupConfig ? {
+          id: clickupConfig.id,
+          instance_url: clickupConfig.instance_url,
+          workspace: clickupConfig.workspace,
+          spaces: clickupConfig.spaces,
+          lists: clickupConfig.lists,
+        } : undefined}
+      />
+      <ConfigureLinearModal
+        isOpen={isLinearOpen}
+        onClose={() => setIsLinearOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={linearConfig ? {
+          id: linearConfig.id,
+          instance_url: linearConfig.instance_url,
+          workspace: linearConfig.workspace,
+          teams: linearConfig.spaces,
+        } : undefined}
+      />
+      <ConfigureGitlabModal
+        isOpen={isGitlabOpen}
+        onClose={() => setIsGitlabOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={gitlabConfig ? {
+          id: gitlabConfig.id,
+          instance_url: gitlabConfig.instance_url,
+          projects: gitlabConfig.projects,
+        } : undefined}
+      />
+      <ConfigureOpenapiModal
+        isOpen={isOpenapiOpen}
+        onClose={() => setIsOpenapiOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={openapiConfig ? {
+          id: openapiConfig.id,
+          path: openapiConfig.path,
+          paths: openapiConfig.paths,
+        } : undefined}
+      />
+      <ConfigureAzureDevopsModal
+        isOpen={isAzureDevopsOpen}
+        onClose={() => setIsAzureDevopsOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={azureDevopsConfig ? {
+          id: azureDevopsConfig.id,
+          instance_url: azureDevopsConfig.instance_url,
+          projects: azureDevopsConfig.projects,
+        } : undefined}
+      />
+      <ConfigureBitbucketModal
+        isOpen={isBitbucketOpen}
+        onClose={() => setIsBitbucketOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={bitbucketConfig ? {
+          id: bitbucketConfig.id,
+          instance_url: bitbucketConfig.instance_url,
+          email: bitbucketConfig.email,
+        } : undefined}
+      />
+      <ConfigureFigmaModal
+        isOpen={isFigmaOpen}
+        onClose={() => setIsFigmaOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={figmaConfig ? {
+          id: figmaConfig.id,
+          file_keys: figmaConfig.repos,
+        } : undefined}
+      />
+      <ConfigureNotionModal
+        isOpen={isNotionOpen}
+        onClose={() => setIsNotionOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={notionConfig ? {
+          id: notionConfig.id,
+          database_ids: notionConfig.spaces,
+        } : undefined}
+      />
+      <ConfigureAsanaModal
+        isOpen={isAsanaOpen}
+        onClose={() => setIsAsanaOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={asanaConfig ? {
+          id: asanaConfig.id,
+          workspace: asanaConfig.workspace,
+          projects: asanaConfig.projects,
+        } : undefined}
+      />
+      <ConfigureSpreadsheetModal
+        isOpen={isSpreadsheetOpen}
+        onClose={() => setIsSpreadsheetOpen(false)}
+        onSuccess={() => refetch()}
+        initialConfig={spreadsheetConfig ? {
+          id: spreadsheetConfig.id,
+          path: spreadsheetConfig.path,
+          paths: spreadsheetConfig.paths,
         } : undefined}
       />
 

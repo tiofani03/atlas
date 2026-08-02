@@ -8,9 +8,12 @@ pub mod sync;
 
 pub use config::{Config, ConnectorConfig};
 pub use connectors::{
-    confluence::ConfluenceConnector, github::GithubConnector, jira::JiraConnector,
+    asana::AsanaConnector, azure_devops::AzureDevopsConnector, bitbucket::BitbucketConnector,
+    clickup::ClickupConnector, confluence::ConfluenceConnector, figma::FigmaConnector,
+    github::GithubConnector, gitlab::GitlabConnector, jira::JiraConnector, linear::LinearConnector,
     local_git::{LocalGitConnector, LocalGitRepository, RepositoryRegistry},
-    markdown::MarkdownConnector, Connector, ConnectorInstance,
+    markdown::MarkdownConnector, notion::NotionConnector, openapi::OpenapiConnector,
+    spreadsheet::SpreadsheetConnector, Connector, ConnectorInstance,
 };
 pub use context::{
     AiBriefing, CategoryAvailability, CategoryScore, CompletenessReport, ContextBuilder, ContextOptions, ContextPackage,

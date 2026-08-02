@@ -32,15 +32,21 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConnectorConfig {
-    pub provider: String, // "jira", "confluence", "github", or "markdown"
+    #[serde(alias = "type")]
+    pub provider: String, // "jira", "confluence", "github", "markdown", "local_git", or "clickup"
     #[serde(default)]
     pub instance_url: String,
     #[serde(default)]
     pub email: String,
+    #[serde(alias = "token")]
     pub api_token: Option<String>,
     pub api_token_env: Option<String>,
+    #[serde(default, alias = "team_id")]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
     #[serde(default)]
     pub projects: Vec<String>,
     #[serde(default)]
@@ -48,11 +54,51 @@ pub struct ConnectorConfig {
     #[serde(default)]
     pub repos: Vec<String>,
     #[serde(default)]
+    pub lists: Vec<String>,
+    #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
     pub paths: Vec<String>,
     #[serde(default)]
     pub glob_patterns: Vec<String>,
+    #[serde(default)]
+    pub teams: Vec<String>,
+    #[serde(default)]
+    pub groups: Vec<String>,
+    #[serde(default)]
+    pub organization: Option<String>,
+    #[serde(default)]
+    pub file_keys: Vec<String>,
+    #[serde(default)]
+    pub database_ids: Vec<String>,
+    #[serde(default)]
+    pub spreadsheet_ids: Vec<String>,
+    #[serde(default)]
+    pub service_account_file: Option<String>,
+    #[serde(default)]
+    pub ssl_cert_path: Option<String>,
+    #[serde(default)]
+    pub sync_wiki: Option<bool>,
+    #[serde(default)]
+    pub sync_comments: Option<bool>,
+    #[serde(default)]
+    pub sync_cycles: Option<bool>,
+    #[serde(default)]
+    pub sync_work_items: Option<bool>,
+    #[serde(default)]
+    pub sync_pull_requests: Option<bool>,
+    #[serde(default)]
+    pub sync_pipelines: Option<bool>,
+    #[serde(default)]
+    pub parse_depth: Option<usize>,
+    #[serde(default)]
+    pub recursive_page_depth: Option<usize>,
+    #[serde(default)]
+    pub auto_resolve_refs: Option<bool>,
+    #[serde(default)]
+    pub has_header_row: Option<bool>,
+    #[serde(default)]
+    pub max_rows_per_sheet: Option<usize>,
 }
 
 impl ConnectorConfig {

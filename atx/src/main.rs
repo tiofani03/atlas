@@ -3,8 +3,10 @@ mod explain;
 
 use anyhow::Result;
 use atlas_core::{
-    ConfluenceConnector, Config, Connector, ConnectorConfig, ConnectorInstance, GithubConnector,
-    JiraConnector, LocalGitConnector, MarkdownConnector, Storage, SyncEngine,
+    AsanaConnector, AzureDevopsConnector, BitbucketConnector, ClickupConnector, ConfluenceConnector, Config,
+    Connector, ConnectorConfig, ConnectorInstance, FigmaConnector, GithubConnector, GitlabConnector,
+    JiraConnector, LinearConnector, LocalGitConnector, MarkdownConnector, NotionConnector, OpenapiConnector,
+    SpreadsheetConnector, Storage, SyncEngine,
 };
 use clap::{Parser, Subcommand};
 
@@ -319,6 +321,63 @@ enum ConfigSubcommands {
         #[arg(long)]
         add_repos: Option<String>,
     },
+    /// Configure ClickUp connector
+    Clickup {
+        /// Connector ID (e.g. "clickup-main")
+        #[arg(default_value = "clickup-main")]
+        id: String,
+        /// ClickUp API Base URL [default: https://api.clickup.com/api/v2]
+        #[arg(long)]
+        url: Option<String>,
+        /// Personal API Token
+        #[arg(long)]
+        token: Option<String>,
+        /// Environment variable containing API Token
+        #[arg(long)]
+        token_env: Option<String>,
+        /// ClickUp Workspace ID
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Comma-separated space keys or IDs
+        #[arg(long)]
+        spaces: Option<String>,
+        /// Comma-separated list keys or IDs
+        #[arg(long)]
+        lists: Option<String>,
+    },
+    /// Configure Markdown connector
+    Markdown {
+        /// Connector ID (e.g. "markdown-docs")
+        #[arg(default_value = "markdown-docs")]
+        id: String,
+        /// Primary directory path
+        #[arg(long)]
+        path: Option<String>,
+        /// Comma-separated directory paths
+        #[arg(long)]
+        paths: Option<String>,
+        /// Add comma-separated directory paths to existing list
+        #[arg(long)]
+        add_paths: Option<String>,
+        /// Comma-separated glob patterns (e.g. "*.md,*.markdown")
+        #[arg(long)]
+        glob_patterns: Option<String>,
+    },
+    /// Configure Local Git connector
+    LocalGit {
+        /// Connector ID (e.g. "local-git-main")
+        #[arg(default_value = "local-git-main")]
+        id: String,
+        /// Primary repository root path
+        #[arg(long)]
+        path: Option<String>,
+        /// Comma-separated repository root paths
+        #[arg(long)]
+        paths: Option<String>,
+        /// Add comma-separated repository paths to existing list
+        #[arg(long)]
+        add_paths: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -391,6 +450,7 @@ async fn main() -> Result<()> {
                             path: None,
                             paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
@@ -441,6 +501,7 @@ async fn main() -> Result<()> {
                             path: None,
                             paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
@@ -489,11 +550,142 @@ async fn main() -> Result<()> {
                             path: None,
                             paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
                     cfg.save_to_path(&config_path)?;
                     println!("GitHub connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Clickup {
+                    id,
+                    url,
+                    token,
+                    token_env,
+                    workspace,
+                    spaces,
+                    lists,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://api.clickup.com/api/v2".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_workspace = workspace.or_else(|| existing.as_ref().and_then(|e| e.workspace.clone()));
+
+                    let space_list = spaces
+                        .map(|s| s.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.spaces.clone()).unwrap_or_default());
+
+                    let list_list = lists
+                        .map(|l| l.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.lists.clone()).unwrap_or_default());
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "clickup".to_string(),
+                            instance_url: final_url,
+                            email: String::new(),
+                            api_token: final_token,
+                            api_token_env: final_token_env,
+                            workspace: final_workspace,
+                            enabled: Some(true),
+                            projects: Vec::new(),
+                            spaces: space_list,
+                            repos: Vec::new(),
+                            lists: list_list,
+                            path: None,
+                            paths: Vec::new(),
+                            glob_patterns: Vec::new(),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("ClickUp connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Markdown {
+                    id,
+                    path,
+                    paths,
+                    add_paths,
+                    glob_patterns,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_path = path.or_else(|| existing.as_ref().and_then(|e| e.path.clone()));
+
+                    let mut path_list = if let Some(p) = paths {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.get_paths()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_paths {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !path_list.contains(&new_p) {
+                                path_list.push(new_p);
+                            }
+                        }
+                    }
+
+                    let glob_list = glob_patterns
+                        .map(|g| g.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.glob_patterns.clone()).unwrap_or_default());
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "markdown".to_string(),
+                            path: final_path,
+                            paths: path_list,
+                            glob_patterns: glob_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Markdown connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::LocalGit {
+                    id,
+                    path,
+                    paths,
+                    add_paths,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_path = path.or_else(|| existing.as_ref().and_then(|e| e.path.clone()));
+
+                    let mut path_list = if let Some(p) = paths {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.get_paths()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_paths {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !path_list.contains(&new_p) {
+                                path_list.push(new_p);
+                            }
+                        }
+                    }
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "local_git".to_string(),
+                            path: final_path,
+                            paths: path_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Local Git connector '{}' updated successfully!", id);
                 }
             }
         }
@@ -528,6 +720,16 @@ async fn main() -> Result<()> {
                     "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
                     "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
                     "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
+                    "clickup" => ConnectorInstance::Clickup(ClickupConnector::new(id.clone(), connector_cfg)?),
+                    "linear" => ConnectorInstance::Linear(LinearConnector::new(id.clone(), connector_cfg)?),
+                    "asana" => ConnectorInstance::Asana(AsanaConnector::new(id.clone(), connector_cfg)?),
+                    "azure_devops" => ConnectorInstance::AzureDevops(AzureDevopsConnector::new(id.clone(), connector_cfg)?),
+                    "gitlab" => ConnectorInstance::Gitlab(GitlabConnector::new(id.clone(), connector_cfg)?),
+                    "bitbucket" => ConnectorInstance::Bitbucket(BitbucketConnector::new(id.clone(), connector_cfg)?),
+                    "openapi" => ConnectorInstance::Openapi(OpenapiConnector::new(id.clone(), connector_cfg)?),
+                    "figma" => ConnectorInstance::Figma(FigmaConnector::new(id.clone(), connector_cfg)?),
+                    "notion" => ConnectorInstance::Notion(NotionConnector::new(id.clone(), connector_cfg)?),
+                    "spreadsheet" => ConnectorInstance::Spreadsheet(SpreadsheetConnector::new(id.clone(), connector_cfg)?),
                     "markdown" => {
                         let path_str = connector_cfg.path.as_deref().unwrap_or(".");
                         let mut conn = MarkdownConnector::new(id.clone(), path_str);
