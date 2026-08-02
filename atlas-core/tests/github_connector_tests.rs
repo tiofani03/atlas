@@ -149,6 +149,7 @@ async fn test_github_connector_sync_all_artifact_types() -> anyhow::Result<()> {
         path: None,
         paths: vec![],
         glob_patterns: vec![],
+        ..Default::default()
     };
 
     let connector = GithubConnector::new("github-test".to_string(), config)?;

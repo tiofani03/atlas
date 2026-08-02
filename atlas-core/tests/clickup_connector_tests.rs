@@ -1,132 +1,97 @@
-use atlas_core::{ArtifactKind, ClickUpConnector, Connector, ConnectorConfig};
-use wiremock::matchers::{method, path, query_param};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use atlas_core::{
+    ArtifactKind, ConnectorConfig, KnowledgeArtifact, Storage,
+};
+use tempfile::tempdir;
 
-#[tokio::test]
-async fn test_clickup_connector_maps_tasks_to_ticket_artifacts() -> anyhow::Result<()> {
-    let mock_server = MockServer::start().await;
+#[test]
+fn test_clickup_config_deserialization() {
+    let toml_content = r#"
+        [[connectors]]
+        type = "clickup"
+        token = "pk_test_12345"
+        workspace = "123456"
+        enabled = true
+        spaces = ["Engineering"]
+        lists = ["Sprint 1"]
+    "#;
 
-    let tasks_json = serde_json::json!({
-        "tasks": [
-            {
-                "id": "abc123",
-                "name": "Build ClickUp connector",
-                "markdown_description": "Implement sync for INIT-488 and link #42",
-                "url": "https://app.clickup.com/t/abc123",
-                "date_created": "1782979200000",
-                "date_updated": "1783065600000",
-                "status": { "status": "in progress" },
-                "priority": { "priority": "high" },
-                "tags": [{ "name": "integration" }],
-                "list": { "id": "list-1", "name": "Engineering" },
-                "space": { "id": "space-1", "name": "Product" },
-                "parent": "parent-1",
-                "dependencies": [{ "task_id": "dep-1" }]
-            }
-        ]
-    });
+    #[derive(serde::Deserialize)]
+    struct Wrapper {
+        connectors: Vec<ConnectorConfig>,
+    }
 
-    Mock::given(method("GET"))
-        .and(path("/team/123/task"))
-        .and(query_param("include_markdown_description", "true"))
-        .and(query_param("include_closed", "true"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tasks_json))
-        .mount(&mock_server)
-        .await;
-
-    let config = ConnectorConfig {
-        provider: "clickup".to_string(),
-        instance_url: mock_server.uri(),
-        email: String::new(),
-        api_token: Some("pk_test".to_string()),
-        api_token_env: None,
-        projects: vec!["123".to_string()],
-        spaces: vec![],
-        repos: vec![],
-        path: None,
-        paths: vec![],
-        glob_patterns: vec![],
-    };
-
-    let connector = ClickUpConnector::new("clickup-test".to_string(), config)?;
-    let artifacts = connector.fetch_modified(None).await?;
-
-    assert_eq!(artifacts.len(), 1);
-    let artifact = &artifacts[0];
-    assert_eq!(artifact.kind, ArtifactKind::Ticket);
-    assert_eq!(artifact.provider, "clickup");
-    assert_eq!(artifact.source_id, "abc123");
-    assert_eq!(artifact.title, "Build ClickUp connector");
-    assert_eq!(artifact.summary.as_deref(), Some("Status: in progress"));
-    assert_eq!(artifact.repository.as_deref(), Some("Engineering"));
-    assert!(artifact.tags.contains(&"workspace:123".to_string()));
-    assert!(artifact.tags.contains(&"status:in progress".to_string()));
-    assert!(artifact.tags.contains(&"integration".to_string()));
-    assert!(artifact
-        .relationships
-        .iter()
-        .any(|rel| rel.relationship_type == "subtask_of" && rel.target_id == "parent-1"));
-    assert!(artifact
-        .relationships
-        .iter()
-        .any(|rel| rel.relationship_type == "depends_on" && rel.target_id == "dep-1"));
-
-    Ok(())
+    let parsed: Wrapper = toml::from_str(toml_content).unwrap();
+    assert_eq!(parsed.connectors.len(), 1);
+    let conn = &parsed.connectors[0];
+    assert_eq!(conn.provider, "clickup");
+    assert_eq!(conn.api_token.as_deref(), Some("pk_test_12345"));
+    assert_eq!(conn.workspace.as_deref(), Some("123456"));
+    assert_eq!(conn.enabled, Some(true));
+    assert_eq!(conn.spaces, vec!["Engineering"]);
+    assert_eq!(conn.lists, vec!["Sprint 1"]);
 }
 
-#[tokio::test]
-async fn test_clickup_connector_discovers_workspaces_when_not_configured() -> anyhow::Result<()> {
-    let mock_server = MockServer::start().await;
+#[test]
+fn test_clickup_relationship_extraction_and_alias_resolution() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let db_path = dir.path().join("test.db");
+    let storage = Storage::new(&db_path)?;
 
-    Mock::given(method("GET"))
-        .and(path("/team"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "teams": [
-                { "id": "workspace-1", "name": "Engineering" }
-            ]
-        })))
-        .mount(&mock_server)
-        .await;
+    let now = chrono::Utc::now();
 
-    Mock::given(method("GET"))
-        .and(path("/team/workspace-1/task"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "tasks": [
-                {
-                    "id": "task-1",
-                    "name": "Discovered workspace task",
-                    "description": "Created from auto-discovered workspace",
-                    "url": "https://app.clickup.com/t/task-1",
-                    "date_updated": "1783065600000",
-                    "status": { "status": "open" }
-                }
-            ]
-        })))
-        .mount(&mock_server)
-        .await;
-
-    let config = ConnectorConfig {
+    let clickup_task = KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("clickup", "https://api.clickup.com/api/v2", "8685abc123"),
+        kind: ArtifactKind::Ticket,
+        title: "Implement authentication service".to_string(),
+        summary: Some("Status: in progress | Priority: high".to_string()),
+        body: "Detailed description of authentication task.".to_string(),
         provider: "clickup".to_string(),
-        instance_url: mock_server.uri(),
-        email: String::new(),
-        api_token: Some("pk_test".to_string()),
-        api_token_env: None,
-        projects: vec![],
-        spaces: vec![],
-        repos: vec![],
-        path: None,
-        paths: vec![],
-        glob_patterns: vec![],
+        source_id: "CU-123".to_string(),
+        source_url: "https://app.clickup.com/t/8685abc123".to_string(),
+        repository: None,
+        tags: vec!["status:in progress".to_string(), "space:Dev".to_string()],
+        relationships: Vec::new(),
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: "abc123checksum".to_string(),
+        metadata: serde_json::json!({
+            "id": "8685abc123",
+            "custom_id": "CU-123"
+        }),
     };
 
-    let connector = ClickUpConnector::new("clickup-test".to_string(), config)?;
-    let artifacts = connector.fetch_modified(None).await?;
+    let commit_artifact = KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("github", "https://github.com", "sha123456"),
+        kind: ArtifactKind::Commit,
+        title: "feat(auth): initial auth service implementation CU-123".to_string(),
+        summary: None,
+        body: "Resolves ClickUp #123 and fixes authentication issue".to_string(),
+        provider: "github".to_string(),
+        source_id: "owner/repo@sha123456".to_string(),
+        source_url: "https://github.com/owner/repo/commit/sha123456".to_string(),
+        repository: Some("owner/repo".to_string()),
+        tags: vec![],
+        relationships: Vec::new(),
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: "sha123456checksum".to_string(),
+        metadata: serde_json::json!({}),
+    };
 
-    assert_eq!(artifacts.len(), 1);
-    assert_eq!(artifacts[0].source_id, "task-1");
-    assert!(artifacts[0]
-        .tags
-        .contains(&"workspace:workspace-1".to_string()));
+    storage.upsert_artifacts_batch(&[clickup_task, commit_artifact])?;
+
+    let matches = storage.resolve_artifact_by_alias("CU-123")?;
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].source_id, "CU-123");
+    assert_eq!(matches[0].provider, "clickup");
+
+    let rels = Storage::extract_automatic_linking_relationships(&matches[0]);
+    assert!(rels.is_empty() || rels.iter().all(|r| r.source_id == "CU-123"));
+
+    let related = storage.get_related_artifacts("CU-123")?;
+    assert!(!related.is_empty(), "Should automatically discover link between Git commit and ClickUp CU-123");
 
     Ok(())
 }

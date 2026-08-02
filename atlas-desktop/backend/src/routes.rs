@@ -43,6 +43,46 @@ pub fn create_router(state: AppState) -> Router {
             post(connectors::save_local_git_connector),
         )
         .route(
+            "/api/connectors/clickup",
+            post(connectors::save_clickup_connector),
+        )
+        .route(
+            "/api/connectors/linear",
+            post(connectors::save_linear_connector),
+        )
+        .route(
+            "/api/connectors/gitlab",
+            post(connectors::save_gitlab_connector),
+        )
+        .route(
+            "/api/connectors/openapi",
+            post(connectors::save_openapi_connector),
+        )
+        .route(
+            "/api/connectors/azure_devops",
+            post(connectors::save_azure_devops_connector),
+        )
+        .route(
+            "/api/connectors/bitbucket",
+            post(connectors::save_bitbucket_connector),
+        )
+        .route(
+            "/api/connectors/figma",
+            post(connectors::save_figma_connector),
+        )
+        .route(
+            "/api/connectors/notion",
+            post(connectors::save_notion_connector),
+        )
+        .route(
+            "/api/connectors/asana",
+            post(connectors::save_asana_connector),
+        )
+        .route(
+            "/api/connectors/spreadsheet",
+            post(connectors::save_spreadsheet_connector),
+        )
+        .route(
             "/api/dialog/select-folder",
             get(connectors::select_folder).post(connectors::select_folder),
         )

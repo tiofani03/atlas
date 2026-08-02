@@ -10,12 +10,15 @@ export interface StatusInfo {
 
 export interface ConnectorInfo {
   id: string;
-  provider: 'jira' | 'confluence' | 'github' | 'clickup' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'local_git' | 'notion' | 'gitlab' | 'bitbucket';
+  provider: 'jira' | 'confluence' | 'github' | 'clickup' | 'linear' | 'asana' | 'slack' | 'openapi' | 'figma' | 'azure_devops' | 'markdown' | 'local_git' | 'notion' | 'gitlab' | 'bitbucket' | 'spreadsheet';
   instance_url: string;
   email: string;
   projects: string[];
   spaces: string[];
   repos: string[];
+  teams?: string[];
+  workspace?: string;
+  lists?: string[];
   path?: string;
   paths?: string[];
   glob_patterns?: string[];
@@ -106,16 +109,6 @@ export interface GithubConfigPayload {
   repos?: string[];
 }
 
-export interface ClickUpConfigPayload {
-  id: string;
-  instance_url?: string;
-  api_token?: string;
-  workspaces?: string[];
-  spaces?: string[];
-  folders?: string[];
-  lists?: string[];
-}
-
 export interface MarkdownConfigPayload {
   id: string;
   path?: string;
@@ -128,4 +121,83 @@ export interface LocalGitConfigPayload {
   path?: string;
   paths?: string[];
 }
+
+export interface ClickupConfigPayload {
+  id: string;
+  instance_url?: string;
+  api_token?: string;
+  workspace?: string;
+  spaces?: string[];
+  lists?: string[];
+}
+
+export interface LinearConfigPayload {
+  id: string;
+  instance_url?: string;
+  api_token?: string;
+  workspace?: string;
+  teams?: string[];
+}
+
+export interface GitlabConfigPayload {
+  id: string;
+  instance_url?: string;
+  api_token?: string;
+  projects?: string[];
+  ssl_cert_path?: string;
+}
+
+export interface OpenapiConfigPayload {
+  id: string;
+  path?: string;
+  paths?: string[];
+}
+
+export interface AzureDevopsConfigPayload {
+  id: string;
+  instance_url?: string;
+  organization?: string;
+  api_token?: string;
+  projects?: string[];
+}
+
+export interface BitbucketConfigPayload {
+  id: string;
+  instance_url?: string;
+  workspace?: string;
+  email?: string;
+  api_token?: string;
+}
+
+export interface FigmaConfigPayload {
+  id: string;
+  api_token?: string;
+  file_keys?: string[];
+  parse_depth?: number;
+}
+
+export interface NotionConfigPayload {
+  id: string;
+  api_token?: string;
+  database_ids?: string[];
+}
+
+export interface AsanaConfigPayload {
+  id: string;
+  workspace?: string;
+  api_token?: string;
+  projects?: string[];
+}
+
+export interface SpreadsheetConfigPayload {
+  id: string;
+  path?: string;
+  paths?: string[];
+  api_token?: string;
+  api_token_env?: string;
+  service_account_file?: string;
+  has_header_row?: boolean;
+  max_rows_per_sheet?: number;
+}
+
 

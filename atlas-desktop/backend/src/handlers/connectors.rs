@@ -48,18 +48,6 @@ pub struct GithubConfigPayload {
 }
 
 #[derive(Deserialize)]
-pub struct ClickUpConfigPayload {
-    pub id: String,
-    pub instance_url: Option<String>,
-    pub api_token: Option<String>,
-    pub api_token_env: Option<String>,
-    pub workspaces: Option<Vec<String>>,
-    pub spaces: Option<Vec<String>>,
-    pub folders: Option<Vec<String>>,
-    pub lists: Option<Vec<String>>,
-}
-
-#[derive(Deserialize)]
 pub struct MarkdownConfigPayload {
     pub id: String,
     pub path: Option<String>,
@@ -72,6 +60,102 @@ pub struct LocalGitConfigPayload {
     pub id: String,
     pub path: Option<String>,
     pub paths: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct ClickupConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub workspace: Option<String>,
+    pub spaces: Option<Vec<String>>,
+    pub lists: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct LinearConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub workspace: Option<String>,
+    pub teams: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct GitlabConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub projects: Option<Vec<String>>,
+    pub ssl_cert_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct OpenapiConfigPayload {
+    pub id: String,
+    pub path: Option<String>,
+    pub paths: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct AzureDevopsConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub organization: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub projects: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct BitbucketConfigPayload {
+    pub id: String,
+    pub instance_url: Option<String>,
+    pub workspace: Option<String>,
+    pub email: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct FigmaConfigPayload {
+    pub id: String,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub file_keys: Option<Vec<String>>,
+    pub parse_depth: Option<usize>,
+}
+
+#[derive(Deserialize)]
+pub struct NotionConfigPayload {
+    pub id: String,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub database_ids: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct AsanaConfigPayload {
+    pub id: String,
+    pub workspace: Option<String>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub projects: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct SpreadsheetConfigPayload {
+    pub id: String,
+    pub path: Option<String>,
+    pub paths: Option<Vec<String>>,
+    pub api_token: Option<String>,
+    pub api_token_env: Option<String>,
+    pub service_account_file: Option<String>,
+    pub has_header_row: Option<bool>,
+    pub max_rows_per_sheet: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -176,6 +260,7 @@ pub async fn save_jira_connector(
             path: None,
             paths: Vec::new(),
             glob_patterns: Vec::new(),
+            ..Default::default()
         },
     );
 
@@ -244,6 +329,7 @@ pub async fn save_confluence_connector(
             path: None,
             paths: Vec::new(),
             glob_patterns: Vec::new(),
+            ..Default::default()
         },
     );
 
@@ -307,6 +393,7 @@ pub async fn save_github_connector(
             path: None,
             paths: Vec::new(),
             glob_patterns: Vec::new(),
+            ..Default::default()
         },
     );
 
@@ -325,7 +412,7 @@ pub async fn save_github_connector(
 
 pub async fn save_clickup_connector(
     State(state): State<AppState>,
-    Json(payload): Json<ClickUpConfigPayload>,
+    Json(payload): Json<ClickupConfigPayload>,
 ) -> impl IntoResponse {
     let mut cfg = match state.load_config() {
         Ok(c) => c,
@@ -350,10 +437,15 @@ pub async fn save_clickup_connector(
     };
 
     let final_url = match payload.instance_url {
-        Some(ref u) if !u.trim().is_empty() => u.trim().to_string(),
+        Some(ref u) if !u.trim().is_empty() => u.clone(),
         _ => existing
             .map(|e| e.instance_url.clone())
             .unwrap_or_else(|| "https://api.clickup.com/api/v2".to_string()),
+    };
+
+    let final_workspace = match payload.workspace {
+        Some(ref w) if !w.trim().is_empty() => Some(w.trim().to_string()),
+        _ => existing.and_then(|e| e.workspace.clone()),
     };
 
     cfg.connectors.insert(
@@ -364,12 +456,16 @@ pub async fn save_clickup_connector(
             email: String::new(),
             api_token: final_token,
             api_token_env: final_token_env,
-            projects: payload.workspaces.unwrap_or_default(),
+            workspace: final_workspace,
+            enabled: Some(true),
+            projects: Vec::new(),
             spaces: payload.spaces.unwrap_or_default(),
-            repos: payload.lists.unwrap_or_default(),
+            repos: Vec::new(),
+            lists: payload.lists.unwrap_or_default(),
             path: None,
-            paths: payload.folders.unwrap_or_default(),
+            paths: Vec::new(),
             glob_patterns: Vec::new(),
+            ..Default::default()
         },
     );
 
@@ -386,7 +482,294 @@ pub async fn save_clickup_connector(
     )
 }
 
-pub async fn validate_credentials(Json(payload): Json<ValidatePayload>) -> impl IntoResponse {
+pub async fn save_linear_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<LinearConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+    let final_url = payload.instance_url.filter(|u| !u.trim().is_empty()).unwrap_or_else(|| existing.map(|e| e.instance_url.clone()).unwrap_or_else(|| "https://api.linear.app/graphql".to_string()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "linear".to_string(),
+            instance_url: final_url,
+            api_token: final_token,
+            api_token_env: final_token_env,
+            workspace: payload.workspace,
+            teams: payload.teams.unwrap_or_default(),
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_gitlab_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<GitlabConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+    let final_url = payload.instance_url.filter(|u| !u.trim().is_empty()).unwrap_or_else(|| existing.map(|e| e.instance_url.clone()).unwrap_or_else(|| "https://gitlab.com".to_string()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "gitlab".to_string(),
+            instance_url: final_url,
+            api_token: final_token,
+            api_token_env: final_token_env,
+            projects: payload.projects.unwrap_or_default(),
+            ssl_cert_path: payload.ssl_cert_path,
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_openapi_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<OpenapiConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "openapi".to_string(),
+            path: payload.path,
+            paths: payload.paths.unwrap_or_default(),
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_azure_devops_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<AzureDevopsConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+    let final_url = payload.instance_url.filter(|u| !u.trim().is_empty()).unwrap_or_else(|| existing.map(|e| e.instance_url.clone()).unwrap_or_else(|| "https://dev.azure.com".to_string()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "azure_devops".to_string(),
+            instance_url: final_url,
+            organization: payload.organization,
+            api_token: final_token,
+            api_token_env: final_token_env,
+            projects: payload.projects.unwrap_or_default(),
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_bitbucket_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<BitbucketConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+    let final_url = payload.instance_url.filter(|u| !u.trim().is_empty()).unwrap_or_else(|| existing.map(|e| e.instance_url.clone()).unwrap_or_else(|| "https://api.bitbucket.org/2.0".to_string()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "bitbucket".to_string(),
+            instance_url: final_url,
+            workspace: payload.workspace,
+            email: payload.email.unwrap_or_default(),
+            api_token: final_token,
+            api_token_env: final_token_env,
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_figma_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<FigmaConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "figma".to_string(),
+            api_token: final_token,
+            api_token_env: final_token_env,
+            file_keys: payload.file_keys.unwrap_or_default(),
+            parse_depth: payload.parse_depth,
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_notion_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<NotionConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "notion".to_string(),
+            api_token: final_token,
+            api_token_env: final_token_env,
+            database_ids: payload.database_ids.unwrap_or_default(),
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_asana_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<AsanaConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "asana".to_string(),
+            workspace: payload.workspace,
+            api_token: final_token,
+            api_token_env: final_token_env,
+            projects: payload.projects.unwrap_or_default(),
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn save_spreadsheet_connector(
+    State(state): State<AppState>,
+    Json(payload): Json<SpreadsheetConfigPayload>,
+) -> impl IntoResponse {
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() }))),
+    };
+
+    let existing = cfg.connectors.get(&payload.id);
+    let final_token = payload.api_token.filter(|t| !t.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token.clone()));
+    let final_token_env = payload.api_token_env.filter(|e| !e.trim().is_empty()).or_else(|| existing.and_then(|e| e.api_token_env.clone()));
+
+    cfg.connectors.insert(
+        payload.id.clone(),
+        ConnectorConfig {
+            provider: "spreadsheet".to_string(),
+            path: payload.path,
+            paths: payload.paths.unwrap_or_default(),
+            api_token: final_token,
+            api_token_env: final_token_env,
+            service_account_file: payload.service_account_file,
+            has_header_row: payload.has_header_row,
+            max_rows_per_sheet: payload.max_rows_per_sheet,
+            enabled: Some(true),
+            ..Default::default()
+        },
+    );
+
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": err.to_string() })));
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "success": true, "id": payload.id })))
+}
+
+pub async fn validate_credentials(
+    Json(payload): Json<ValidatePayload>,
+) -> impl IntoResponse {
     let test_cfg = ConnectorConfig {
         provider: payload.provider.clone(),
         instance_url: payload.instance_url,
@@ -399,24 +782,30 @@ pub async fn validate_credentials(Json(payload): Json<ValidatePayload>) -> impl 
         path: None,
         paths: Vec::new(),
         glob_patterns: Vec::new(),
+        ..Default::default()
     };
 
     let result = match payload.provider.as_str() {
         "jira" => atlas_core::JiraConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "confluence" => {
-            atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ())
-        }
+        "confluence" => atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ()),
         "github" => atlas_core::GithubConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "clickup" => atlas_core::ClickUpConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "clickup" => atlas_core::ClickupConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "linear" => atlas_core::LinearConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "asana" => atlas_core::AsanaConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "azure_devops" => atlas_core::AzureDevopsConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "gitlab" => atlas_core::GitlabConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "bitbucket" => atlas_core::BitbucketConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "openapi" => atlas_core::OpenapiConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "figma" => atlas_core::FigmaConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "notion" => atlas_core::NotionConnector::new("test".to_string(), test_cfg).map(|_| ()),
+        "spreadsheet" => atlas_core::SpreadsheetConnector::new("test".to_string(), test_cfg).map(|_| ()),
         _ => Err(anyhow::anyhow!("Unsupported provider")),
     };
 
     match result {
         Ok(_) => (
             StatusCode::OK,
-            Json(
-                serde_json::json!({ "valid": true, "message": "Credentials structure is valid." }),
-            ),
+            Json(serde_json::json!({ "valid": true, "message": "Credentials structure is valid." })),
         ),
         Err(err) => (
             StatusCode::BAD_REQUEST,
@@ -455,6 +844,7 @@ pub async fn save_markdown_connector(
             path: payload.path,
             paths: paths_vec,
             glob_patterns: payload.glob_patterns.unwrap_or_default(),
+            ..Default::default()
         },
     );
 
@@ -501,6 +891,7 @@ pub async fn save_local_git_connector(
             path: payload.path,
             paths: paths_vec,
             glob_patterns: Vec::new(),
+            ..Default::default()
         },
     );
 
@@ -516,6 +907,7 @@ pub async fn save_local_git_connector(
         Json(serde_json::json!({ "success": true, "id": payload.id })),
     )
 }
+
 
 pub async fn select_folder() -> impl IntoResponse {
     let path: Option<String> = tokio::task::spawn_blocking(|| {
@@ -604,10 +996,7 @@ pub async fn delete_connector(
     if payload.clear_data.unwrap_or(true) {
         if let Ok(storage) = state.get_storage() {
             let provider_opt = conn_cfg.as_ref().map(|c| c.provider.as_str());
-            let repos = conn_cfg
-                .as_ref()
-                .map(|c| c.repos.clone())
-                .unwrap_or_default();
+            let repos = conn_cfg.as_ref().map(|c| c.repos.clone()).unwrap_or_default();
             cleared_count = storage
                 .clear_connector_data(&payload.id, provider_opt, &repos)
                 .unwrap_or(0);

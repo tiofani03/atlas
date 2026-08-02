@@ -1,10 +1,12 @@
-mod explain;
 mod formatter;
+mod explain;
 
 use anyhow::Result;
 use atlas_core::{
-    ClickUpConnector, Config, ConfluenceConnector, Connector, ConnectorConfig, ConnectorInstance,
-    GithubConnector, JiraConnector, LocalGitConnector, MarkdownConnector, Storage, SyncEngine,
+    AsanaConnector, AzureDevopsConnector, BitbucketConnector, ClickupConnector, ConfluenceConnector, Config,
+    Connector, ConnectorConfig, ConnectorInstance, FigmaConnector, GithubConnector, GitlabConnector,
+    JiraConnector, LinearConnector, LocalGitConnector, MarkdownConnector, NotionConnector, OpenapiConnector,
+    SpreadsheetConnector, Storage, SyncEngine,
 };
 use clap::{Parser, Subcommand};
 
@@ -320,7 +322,7 @@ enum ConfigSubcommands {
         add_repos: Option<String>,
     },
     /// Configure ClickUp connector
-    ClickUp {
+    Clickup {
         /// Connector ID (e.g. "clickup-main")
         #[arg(default_value = "clickup-main")]
         id: String,
@@ -330,30 +332,52 @@ enum ConfigSubcommands {
         /// Personal API Token
         #[arg(long)]
         token: Option<String>,
-        /// Environment variable containing Personal API Token
+        /// Environment variable containing API Token
         #[arg(long)]
         token_env: Option<String>,
-        /// Comma-separated Workspace/Team IDs. Empty syncs all workspaces authorized for the token.
+        /// ClickUp Workspace ID. Empty syncs all workspaces authorized for the token.
         #[arg(long)]
-        workspaces: Option<String>,
-        /// Comma-separated Space IDs to filter
+        workspace: Option<String>,
+        /// Comma-separated space keys or IDs
         #[arg(long)]
         spaces: Option<String>,
-        /// Comma-separated Folder IDs to filter
-        #[arg(long)]
-        folders: Option<String>,
-        /// Comma-separated List IDs to filter
+        /// Comma-separated list keys or IDs
         #[arg(long)]
         lists: Option<String>,
     },
-}
-
-fn split_csv(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(|item| item.trim().to_string())
-        .filter(|item| !item.is_empty())
-        .collect()
+    /// Configure Markdown connector
+    Markdown {
+        /// Connector ID (e.g. "markdown-docs")
+        #[arg(default_value = "markdown-docs")]
+        id: String,
+        /// Primary directory path
+        #[arg(long)]
+        path: Option<String>,
+        /// Comma-separated directory paths
+        #[arg(long)]
+        paths: Option<String>,
+        /// Add comma-separated directory paths to existing list
+        #[arg(long)]
+        add_paths: Option<String>,
+        /// Comma-separated glob patterns (e.g. "*.md,*.markdown")
+        #[arg(long)]
+        glob_patterns: Option<String>,
+    },
+    /// Configure Local Git connector
+    LocalGit {
+        /// Connector ID (e.g. "local-git-main")
+        #[arg(default_value = "local-git-main")]
+        id: String,
+        /// Primary repository root path
+        #[arg(long)]
+        path: Option<String>,
+        /// Comma-separated repository root paths
+        #[arg(long)]
+        paths: Option<String>,
+        /// Add comma-separated repository paths to existing list
+        #[arg(long)]
+        add_paths: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -393,35 +417,19 @@ async fn main() -> Result<()> {
                     add_projects,
                 } => {
                     let existing = cfg.connectors.get(&id).cloned();
-                    let final_url = url
-                        .or_else(|| existing.as_ref().map(|e| e.instance_url.clone()))
-                        .unwrap_or_default();
-                    let final_email = email
-                        .or_else(|| existing.as_ref().map(|e| e.email.clone()))
-                        .unwrap_or_default();
-                    let final_token =
-                        token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
-                    let final_token_env = token_env
-                        .or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_default();
+                    let final_email = email.or_else(|| existing.as_ref().map(|e| e.email.clone())).unwrap_or_default();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
 
                     let mut project_list = if let Some(p) = projects {
-                        p.split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect()
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
                     } else {
-                        existing
-                            .as_ref()
-                            .map(|e| e.projects.clone())
-                            .unwrap_or_default()
+                        existing.as_ref().map(|e| e.projects.clone()).unwrap_or_default()
                     };
 
                     if let Some(add_p) = add_projects {
-                        for new_p in add_p
-                            .split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                        {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
                             if !project_list.contains(&new_p) {
                                 project_list.push(new_p);
                             }
@@ -442,6 +450,7 @@ async fn main() -> Result<()> {
                             path: None,
                             paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
@@ -459,35 +468,19 @@ async fn main() -> Result<()> {
                     add_spaces,
                 } => {
                     let existing = cfg.connectors.get(&id).cloned();
-                    let final_url = url
-                        .or_else(|| existing.as_ref().map(|e| e.instance_url.clone()))
-                        .unwrap_or_default();
-                    let final_email = email
-                        .or_else(|| existing.as_ref().map(|e| e.email.clone()))
-                        .unwrap_or_default();
-                    let final_token =
-                        token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
-                    let final_token_env = token_env
-                        .or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_default();
+                    let final_email = email.or_else(|| existing.as_ref().map(|e| e.email.clone())).unwrap_or_default();
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
 
                     let mut space_list = if let Some(s) = spaces {
-                        s.split(',')
-                            .map(|item| item.trim().to_string())
-                            .filter(|item| !item.is_empty())
-                            .collect()
+                        s.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect()
                     } else {
-                        existing
-                            .as_ref()
-                            .map(|e| e.spaces.clone())
-                            .unwrap_or_default()
+                        existing.as_ref().map(|e| e.spaces.clone()).unwrap_or_default()
                     };
 
                     if let Some(add_s) = add_spaces {
-                        for new_s in add_s
-                            .split(',')
-                            .map(|item| item.trim().to_string())
-                            .filter(|item| !item.is_empty())
-                        {
+                        for new_s in add_s.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()) {
                             if !space_list.contains(&new_s) {
                                 space_list.push(new_s);
                             }
@@ -508,6 +501,7 @@ async fn main() -> Result<()> {
                             path: None,
                             paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
@@ -524,32 +518,18 @@ async fn main() -> Result<()> {
                     add_repos,
                 } => {
                     let existing = cfg.connectors.get(&id).cloned();
-                    let final_url = url
-                        .or_else(|| existing.as_ref().map(|e| e.instance_url.clone()))
-                        .unwrap_or_else(|| "https://api.github.com".to_string());
-                    let final_token =
-                        token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
-                    let final_token_env = token_env
-                        .or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://api.github.com".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
 
                     let mut repo_list = if let Some(r) = repos {
-                        r.split(',')
-                            .map(|item| item.trim().to_string())
-                            .filter(|item| !item.is_empty())
-                            .collect()
+                        r.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect()
                     } else {
-                        existing
-                            .as_ref()
-                            .map(|e| e.repos.clone())
-                            .unwrap_or_default()
+                        existing.as_ref().map(|e| e.repos.clone()).unwrap_or_default()
                     };
 
                     if let Some(add_r) = add_repos {
-                        for new_r in add_r
-                            .split(',')
-                            .map(|item| item.trim().to_string())
-                            .filter(|item| !item.is_empty())
-                        {
+                        for new_r in add_r.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()) {
                             if !repo_list.contains(&new_r) {
                                 repo_list.push(new_r);
                             }
@@ -570,6 +550,7 @@ async fn main() -> Result<()> {
                             path: None,
                             paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
@@ -577,41 +558,28 @@ async fn main() -> Result<()> {
                     println!("GitHub connector '{}' updated successfully!", id);
                 }
 
-                ConfigSubcommands::ClickUp {
+                ConfigSubcommands::Clickup {
                     id,
                     url,
                     token,
                     token_env,
-                    workspaces,
+                    workspace,
                     spaces,
-                    folders,
                     lists,
                 } => {
                     let existing = cfg.connectors.get(&id).cloned();
-                    let final_url = url
-                        .or_else(|| existing.as_ref().map(|e| e.instance_url.clone()))
-                        .unwrap_or_else(|| "https://api.clickup.com/api/v2".to_string());
-                    let final_token =
-                        token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
-                    let final_token_env = token_env
-                        .or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_url = url.or_else(|| existing.as_ref().map(|e| e.instance_url.clone())).unwrap_or_else(|| "https://api.clickup.com/api/v2".to_string());
+                    let final_token = token.or_else(|| existing.as_ref().and_then(|e| e.api_token.clone()));
+                    let final_token_env = token_env.or_else(|| existing.as_ref().and_then(|e| e.api_token_env.clone()));
+                    let final_workspace = workspace.or_else(|| existing.as_ref().and_then(|e| e.workspace.clone()));
 
-                    let workspace_list = workspaces
-                        .map(|v| split_csv(&v))
-                        .or_else(|| existing.as_ref().map(|e| e.projects.clone()))
-                        .unwrap_or_default();
                     let space_list = spaces
-                        .map(|v| split_csv(&v))
-                        .or_else(|| existing.as_ref().map(|e| e.spaces.clone()))
-                        .unwrap_or_default();
-                    let folder_list = folders
-                        .map(|v| split_csv(&v))
-                        .or_else(|| existing.as_ref().map(|e| e.paths.clone()))
-                        .unwrap_or_default();
+                        .map(|s| s.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.spaces.clone()).unwrap_or_default());
+
                     let list_list = lists
-                        .map(|v| split_csv(&v))
-                        .or_else(|| existing.as_ref().map(|e| e.repos.clone()))
-                        .unwrap_or_default();
+                        .map(|l| l.split(',').map(|item| item.trim().to_string()).filter(|item| !item.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.lists.clone()).unwrap_or_default());
 
                     cfg.connectors.insert(
                         id.clone(),
@@ -621,17 +589,103 @@ async fn main() -> Result<()> {
                             email: String::new(),
                             api_token: final_token,
                             api_token_env: final_token_env,
-                            projects: workspace_list,
+                            workspace: final_workspace,
+                            enabled: Some(true),
+                            projects: Vec::new(),
                             spaces: space_list,
-                            repos: list_list,
+                            repos: Vec::new(),
+                            lists: list_list,
                             path: None,
-                            paths: folder_list,
+                            paths: Vec::new(),
                             glob_patterns: Vec::new(),
+                            ..Default::default()
                         },
                     );
 
                     cfg.save_to_path(&config_path)?;
                     println!("ClickUp connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::Markdown {
+                    id,
+                    path,
+                    paths,
+                    add_paths,
+                    glob_patterns,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_path = path.or_else(|| existing.as_ref().and_then(|e| e.path.clone()));
+
+                    let mut path_list = if let Some(p) = paths {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.get_paths()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_paths {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !path_list.contains(&new_p) {
+                                path_list.push(new_p);
+                            }
+                        }
+                    }
+
+                    let glob_list = glob_patterns
+                        .map(|g| g.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                        .unwrap_or_else(|| existing.as_ref().map(|e| e.glob_patterns.clone()).unwrap_or_default());
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "markdown".to_string(),
+                            path: final_path,
+                            paths: path_list,
+                            glob_patterns: glob_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Markdown connector '{}' updated successfully!", id);
+                }
+
+                ConfigSubcommands::LocalGit {
+                    id,
+                    path,
+                    paths,
+                    add_paths,
+                } => {
+                    let existing = cfg.connectors.get(&id).cloned();
+                    let final_path = path.or_else(|| existing.as_ref().and_then(|e| e.path.clone()));
+
+                    let mut path_list = if let Some(p) = paths {
+                        p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    } else {
+                        existing.as_ref().map(|e| e.get_paths()).unwrap_or_default()
+                    };
+
+                    if let Some(add_p) = add_paths {
+                        for new_p in add_p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                            if !path_list.contains(&new_p) {
+                                path_list.push(new_p);
+                            }
+                        }
+                    }
+
+                    cfg.connectors.insert(
+                        id.clone(),
+                        ConnectorConfig {
+                            provider: "local_git".to_string(),
+                            path: final_path,
+                            paths: path_list,
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    );
+
+                    cfg.save_to_path(&config_path)?;
+                    println!("Local Git connector '{}' updated successfully!", id);
                 }
             }
         }
@@ -663,20 +717,19 @@ async fn main() -> Result<()> {
 
             for (id, connector_cfg) in target_connectors {
                 let conn_instance = match connector_cfg.provider.as_str() {
-                    "jira" => {
-                        ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?)
-                    }
-                    "clickup" => ConnectorInstance::ClickUp(ClickUpConnector::new(
-                        id.clone(),
-                        connector_cfg,
-                    )?),
-                    "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(
-                        id.clone(),
-                        connector_cfg,
-                    )?),
-                    "github" => {
-                        ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?)
-                    }
+                    "jira" => ConnectorInstance::Jira(JiraConnector::new(id.clone(), connector_cfg)?),
+                    "confluence" => ConnectorInstance::Confluence(ConfluenceConnector::new(id.clone(), connector_cfg)?),
+                    "github" => ConnectorInstance::Github(GithubConnector::new(id.clone(), connector_cfg)?),
+                    "clickup" => ConnectorInstance::Clickup(ClickupConnector::new(id.clone(), connector_cfg)?),
+                    "linear" => ConnectorInstance::Linear(LinearConnector::new(id.clone(), connector_cfg)?),
+                    "asana" => ConnectorInstance::Asana(AsanaConnector::new(id.clone(), connector_cfg)?),
+                    "azure_devops" => ConnectorInstance::AzureDevops(AzureDevopsConnector::new(id.clone(), connector_cfg)?),
+                    "gitlab" => ConnectorInstance::Gitlab(GitlabConnector::new(id.clone(), connector_cfg)?),
+                    "bitbucket" => ConnectorInstance::Bitbucket(BitbucketConnector::new(id.clone(), connector_cfg)?),
+                    "openapi" => ConnectorInstance::Openapi(OpenapiConnector::new(id.clone(), connector_cfg)?),
+                    "figma" => ConnectorInstance::Figma(FigmaConnector::new(id.clone(), connector_cfg)?),
+                    "notion" => ConnectorInstance::Notion(NotionConnector::new(id.clone(), connector_cfg)?),
+                    "spreadsheet" => ConnectorInstance::Spreadsheet(SpreadsheetConnector::new(id.clone(), connector_cfg)?),
                     "markdown" => {
                         let path_str = connector_cfg.path.as_deref().unwrap_or(".");
                         let mut conn = MarkdownConnector::new(id.clone(), path_str);
@@ -685,21 +738,14 @@ async fn main() -> Result<()> {
                         }
                         ConnectorInstance::Markdown(conn)
                     }
-                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(
-                        id.clone(),
-                        &connector_cfg,
-                    )?),
+                    "local_git" => ConnectorInstance::LocalGit(LocalGitConnector::new_from_config(id.clone(), &connector_cfg)?),
                     other => {
                         println!("Skipping unknown provider '{}' for ID '{}'", other, id);
                         continue;
                     }
                 };
 
-                print!(
-                    "Syncing [{}] (provider: {})... ",
-                    id,
-                    conn_instance.provider()
-                );
+                print!("Syncing [{}] (provider: {})... ", id, conn_instance.provider());
 
                 match SyncEngine::run_sync(&conn_instance, &storage, full).await {
                     Ok(summary) => {
@@ -781,22 +827,11 @@ async fn main() -> Result<()> {
                     );
                 }
             } else {
-                println!(
-                    "Ambiguous query '{}'. Found {} matching artifacts:\n",
-                    id,
-                    matches.len()
-                );
+                println!("Ambiguous query '{}'. Found {} matching artifacts:\n", id, matches.len());
                 for (idx, m) in matches.iter().enumerate() {
                     let label = formatter::format_related_item(m);
                     let repo = m.repository.as_deref().unwrap_or("no-repo");
-                    println!(
-                        "{:2}. [{}] {} ({}) — source_id: {}",
-                        idx + 1,
-                        m.kind.to_string().to_uppercase(),
-                        label,
-                        repo,
-                        m.source_id
-                    );
+                    println!("{:2}. [{}] {} ({}) — source_id: {}", idx + 1, m.kind.to_string().to_uppercase(), label, repo, m.source_id);
                 }
                 println!("\nSpecify full canonical source_id or repo prefix (e.g. atx artifact owner/repo#id).");
             }
@@ -867,7 +902,10 @@ async fn main() -> Result<()> {
             if json {
                 println!("{}", serde_json::to_string_pretty(&pkg)?);
             } else {
-                println!("{}", formatter::format_context_package(&pkg, verbose, raw));
+                println!(
+                    "{}",
+                    formatter::format_context_package(&pkg, verbose, raw)
+                );
             }
         }
 
@@ -905,10 +943,7 @@ async fn main() -> Result<()> {
             println!("Database Path:         {:?}", db_path);
             println!("Total Artifacts:       {}", stats.total_artifacts);
             println!("Configured Connectors: {}", cfg.connectors.len());
-            println!(
-                "Database Size:         {:.2} MB",
-                stats.db_size_bytes as f64 / (1024.0 * 1024.0)
-            );
+            println!("Database Size:         {:.2} MB", stats.db_size_bytes as f64 / (1024.0 * 1024.0));
             println!("\nConnectors:");
 
             for (id, conn_cfg) in &cfg.connectors {
@@ -917,20 +952,14 @@ async fn main() -> Result<()> {
                     .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
                     .unwrap_or_else(|| "Never".to_string());
 
-                println!(
-                    "  - [{}] ({}) -> Last Sync: {}",
-                    id, conn_cfg.provider, sync_str
-                );
+                println!("  - [{}] ({}) -> Last Sync: {}", id, conn_cfg.provider, sync_str);
             }
 
             let issues = storage.validate_graph_integrity().unwrap_or_default();
             if issues.is_empty() {
                 println!("\nGraph Integrity:      PASS (0 issues detected)");
             } else {
-                println!(
-                    "\nGraph Integrity:      FAIL ({} issues detected)",
-                    issues.len()
-                );
+                println!("\nGraph Integrity:      FAIL ({} issues detected)", issues.len());
                 for issue in issues.iter().take(5) {
                     println!("  ⚠️  {}", issue);
                 }
@@ -949,10 +978,7 @@ async fn main() -> Result<()> {
 
                 if !force {
                     println!("⚠️  WARNING: This will permanently delete synchronized artifacts for connector '{}'.", target_id);
-                    print!(
-                        "Are you sure you want to clear data for '{}'? [y/N]: ",
-                        target_id
-                    );
+                    print!("Are you sure you want to clear data for '{}'? [y/N]: ", target_id);
                     use std::io::Write;
                     std::io::stdout().flush()?;
                     let mut input = String::new();
@@ -965,10 +991,7 @@ async fn main() -> Result<()> {
                 }
 
                 let count = storage.clear_connector_data(&target_id, provider_opt, &repos)?;
-                println!(
-                    "✨ Reset Complete: Cleared {} artifacts for connector '{}'!",
-                    count, target_id
-                );
+                println!("✨ Reset Complete: Cleared {} artifacts for connector '{}'!", count, target_id);
             } else {
                 if !force {
                     println!("⚠️  WARNING: This will permanently delete all synchronized knowledge artifacts, relationships, and search indexes.");
