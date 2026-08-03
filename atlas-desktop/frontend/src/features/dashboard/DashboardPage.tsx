@@ -14,20 +14,28 @@ import {
 
 export const DashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { data: status, isLoading: statusLoading } = useQuery({
+  const { data: status, isLoading: statusLoading, isError: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ['status'],
     queryFn: api.getStatus,
+    retry: 1,
   });
 
-  const { data: connectors } = useQuery({
+  const { data: connectors, isError: connectorsError, refetch: refetchConnectors } = useQuery({
     queryKey: ['connectors'],
     queryFn: api.getConnectors,
+    retry: 1,
   });
 
   const { data: syncProgress } = useQuery({
     queryKey: ['syncStatus'],
     queryFn: api.getSyncStatus,
   });
+
+  const dashboardError = statusError || connectorsError;
+  const handleRetry = () => {
+    refetchStatus();
+    refetchConnectors();
+  };
 
   const syncMutation = useMutation({
     mutationFn: (id?: string) => api.triggerSync(id),
@@ -51,6 +59,23 @@ export const DashboardPage: React.FC = () => {
           Local engineering knowledge engine health and overview.
         </p>
       </div>
+
+      {/* Connection Error Banner */}
+      {dashboardError && (
+        <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300 text-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            <span>Could not reach the Atlas backend. Ensure the local engine is running on port 31415.</span>
+          </div>
+          <button
+            onClick={handleRetry}
+            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold transition flex items-center gap-1.5 shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry</span>
+          </button>
+        </div>
+      )}
 
       {/* Primary KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -37,6 +37,7 @@ export const ConfigureClickupModal: React.FC<ModalProps> = ({ isOpen, onClose, o
         instance_url: instanceUrl,
         email: '',
         api_token: apiToken,
+        workspace: workspace || undefined,
       });
       setValidationResult(res);
     } catch (err: unknown) {

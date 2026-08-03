@@ -56,7 +56,7 @@ fn test_figma_node_storage_and_alias_resolution() -> anyhow::Result<()> {
         metadata: serde_json::json!({ "id": "1-42", "type": "COMPONENT" }),
     };
 
-    storage.upsert_artifacts_batch(&[figma_component])?;
+    storage.upsert_artifacts_batch(&[figma_component], None)?;
 
     let matches = storage.resolve_artifact_by_alias("aBC123xYz:1-42")?;
     assert_eq!(matches.len(), 1);

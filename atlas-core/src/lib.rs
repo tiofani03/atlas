@@ -26,6 +26,7 @@ pub use context::{
     PrioritizedKnowledgeGaps, QueueStep, RecommendedItem, ScopeItem, SourceInfo, StatusCheck,
 };
 pub use domain::{ArtifactKind, ArtifactRelationship, DomainAspect, KnowledgeArtifact};
+pub use progress::{ProgressEvent, ProgressEventBus, SyncAction};
 pub use storage::{ArtifactHeader, Storage, StorageStats};
 pub use sync::{SyncEngine, SyncSummary};
 

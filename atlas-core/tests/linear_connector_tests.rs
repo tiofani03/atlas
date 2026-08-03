@@ -75,7 +75,7 @@ fn test_linear_artifact_storage_and_alias_resolution() -> anyhow::Result<()> {
         metadata: serde_json::json!({}),
     };
 
-    storage.upsert_artifacts_batch(&[linear_issue, commit_artifact])?;
+    storage.upsert_artifacts_batch(&[linear_issue, commit_artifact], None)?;
 
     let matches = storage.resolve_artifact_by_alias("ENG-501")?;
     assert_eq!(matches.len(), 1);

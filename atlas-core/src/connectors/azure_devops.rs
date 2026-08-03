@@ -1,7 +1,7 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
 use crate::domain::{ArtifactKind, KnowledgeArtifact};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde_json::{json, Value};
@@ -81,6 +81,60 @@ impl Connector for AzureDevopsConnector {
 
     fn provider(&self) -> &str {
         "azure_devops"
+    }
+
+    async fn verify(&self) -> Result<String> {
+        let base = self.base_url();
+
+        // Azure DevOps has no org-level whoami endpoint. Probe the account's
+        // profile endpoint; fall back to the first configured project's
+        // repository list when only a Bearer-style token (PAT) is available.
+        let profile_url = format!("{}/_apis/profile/profiles/me?api-version=7.0", base);
+        let resp = self
+            .client
+            .get(&profile_url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Azure DevOps API: {}", e))?;
+
+        let status = resp.status();
+        if status.is_success() {
+            let json: Value = resp.json().await.unwrap_or_default();
+            let display_name = json["displayName"]
+                .as_str()
+                .unwrap_or("authenticated user");
+            return Ok(format!(
+                "Connected to Azure DevOps successfully as '{}'.",
+                display_name
+            ));
+        }
+
+        if let Some(project) = self.config.projects.first() {
+            let repos_url = format!(
+                "{}/{}/_apis/git/repositories?api-version=7.0",
+                base, project
+            );
+            let repos_resp = self
+                .client
+                .get(&repos_url)
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to connect to Azure DevOps API: {}", e))?;
+            if repos_resp.status().is_success() {
+                let json: Value = repos_resp.json().await.unwrap_or_default();
+                let count = json["count"].as_u64().unwrap_or(0);
+                return Ok(format!(
+                    "Connected to Azure DevOps successfully (project '{}', {} repositories).",
+                    project, count
+                ));
+            }
+        }
+
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            bail!("Azure DevOps authentication failed: invalid or unauthorized PAT")
+        }
+        let err = resp.text().await.unwrap_or_default();
+        bail!("Azure DevOps verification failed with status {}: {}", status, err)
     }
 
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {

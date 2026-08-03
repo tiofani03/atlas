@@ -20,6 +20,12 @@ pub enum ProgressEvent {
         connector_id: String,
         total_expected: Option<u64>,
     },
+    /// Published once a fetch completes and the number of artifacts to index is
+    /// known, so consumers can compute a real percentage during the DB phase.
+    ItemsDiscovered {
+        connector_id: String,
+        total: u64,
+    },
     OperationChanged {
         connector_id: String,
         operation: String,

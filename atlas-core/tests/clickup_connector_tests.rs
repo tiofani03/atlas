@@ -80,7 +80,7 @@ fn test_clickup_relationship_extraction_and_alias_resolution() -> anyhow::Result
         metadata: serde_json::json!({}),
     };
 
-    storage.upsert_artifacts_batch(&[clickup_task, commit_artifact])?;
+    storage.upsert_artifacts_batch(&[clickup_task, commit_artifact], None)?;
 
     let matches = storage.resolve_artifact_by_alias("CU-123")?;
     assert_eq!(matches.len(), 1);

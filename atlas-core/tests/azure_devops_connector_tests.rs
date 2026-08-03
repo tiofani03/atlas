@@ -56,7 +56,7 @@ fn test_azure_devops_work_item_storage_and_alias_resolution() -> anyhow::Result<
         metadata: serde_json::json!({ "id": 9021 }),
     };
 
-    storage.upsert_artifacts_batch(&[work_item])?;
+    storage.upsert_artifacts_batch(&[work_item], None)?;
 
     let matches = storage.resolve_artifact_by_alias("CorePlatform/workitem/9021")?;
     assert_eq!(matches.len(), 1);

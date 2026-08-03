@@ -1,9 +1,5 @@
-mod handlers;
-mod routes;
-mod state;
-
+use atlas_desktop_backend::{AppState, create_test_router};
 use atlas_core::Config;
-use state::AppState;
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -18,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Using configuration file at: {:?}", config_path);
 
     let state = AppState::new(config_path);
-    let app = routes::create_router(state);
+    let app = create_test_router(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 31415));
     tracing::info!("Atlas Desktop Local Backend listening on http://{}", addr);

@@ -19,6 +19,9 @@ export interface ConnectorInfo {
   teams?: string[];
   workspace?: string;
   lists?: string[];
+  file_keys?: string[];
+  database_ids?: string[];
+  organization?: string;
   path?: string;
   paths?: string[];
   glob_patterns?: string[];

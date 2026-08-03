@@ -54,7 +54,7 @@ fn test_notion_page_storage_and_alias_resolution() -> anyhow::Result<()> {
         metadata: serde_json::json!({ "id": "4a98120c921a4f00" }),
     };
 
-    storage.upsert_artifacts_batch(&[notion_page])?;
+    storage.upsert_artifacts_batch(&[notion_page], None)?;
 
     let matches = storage.resolve_artifact_by_alias("page:4a98120c921a4f00")?;
     assert_eq!(matches.len(), 1);

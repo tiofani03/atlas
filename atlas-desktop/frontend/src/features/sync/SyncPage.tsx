@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import { RefreshCw, CheckCircle2, AlertCircle, Play, Layers } from 'lucide-react';
+import { RefreshCw, CheckCircle2, AlertCircle, Play, Layers, Square } from 'lucide-react';
 
 export const SyncPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -24,6 +24,13 @@ export const SyncPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['syncStatus'] });
       queryClient.invalidateQueries({ queryKey: ['status'] });
       queryClient.invalidateQueries({ queryKey: ['connectors'] });
+    },
+  });
+
+  const cancelSyncMutation = useMutation({
+    mutationFn: () => api.cancelSync(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['syncStatus'] });
     },
   });
 
@@ -78,8 +85,42 @@ export const SyncPage: React.FC = () => {
               <Layers className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
               <span>Force Full Sync</span>
             </button>
+
+            {syncProgress?.is_running && (
+              <button
+                onClick={() => cancelSyncMutation.mutate()}
+                disabled={cancelSyncMutation.isPending}
+                className="px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
+              >
+                <Square className="w-3.5 h-3.5 fill-white" />
+                <span>{cancelSyncMutation.isPending ? 'Cancelling...' : 'Cancel Sync'}</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Live Stage + Progress Bar */}
+        {syncProgress?.is_running && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-semibold">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>{syncProgress.phase || 'Working...'}</span>
+              </span>
+              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                {typeof syncProgress.percentage === 'number'
+                  ? `${syncProgress.percentage.toFixed(0)}%`
+                  : `${syncProgress.fetched} items`}
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-200/70 dark:bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-600 dark:bg-indigo-400 rounded-full transition-all duration-300"
+                style={{ width: `${Math.max(4, syncProgress.percentage || 0)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Live Counters */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-slate-200 dark:border-zinc-800/80 pt-4">

@@ -56,7 +56,7 @@ fn test_gitlab_mr_storage_and_alias_resolution() -> anyhow::Result<()> {
         metadata: serde_json::json!({ "iid": 42 }),
     };
 
-    storage.upsert_artifacts_batch(&[gitlab_mr])?;
+    storage.upsert_artifacts_batch(&[gitlab_mr], None)?;
 
     let matches = storage.resolve_artifact_by_alias("group/repo/mr/42")?;
     assert_eq!(matches.len(), 1);

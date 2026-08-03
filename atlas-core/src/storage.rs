@@ -1,4 +1,5 @@
 use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
+use crate::progress::{ProgressEvent, SyncAction};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -358,7 +359,12 @@ impl Storage {
         Ok(checksum)
     }
 
-    pub fn upsert_artifacts_batch(&self, artifacts: &[KnowledgeArtifact]) -> Result<(usize, usize, usize)> {
+    pub fn upsert_artifacts_batch(
+        &self,
+        artifacts: &[KnowledgeArtifact],
+        progress: Option<&crate::progress::ProgressEventBus>,
+    ) -> Result<(usize, usize, usize)> {
+        let connector_id = artifacts.first().map(|a| a.provider.clone()).unwrap_or_default();
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -432,14 +438,25 @@ impl Storage {
                     .query_row(params![&artifact.id], |row| row.get(0))
                     .optional()?;
 
-                if let Some(ref cs) = existing_checksum {
+                let action = if let Some(ref cs) = existing_checksum {
                     if cs == &artifact.checksum {
                         skipped += 1;
-                        continue;
+                        SyncAction::SkippedUnchanged
+                    } else {
+                        updated += 1;
+                        SyncAction::Updated
                     }
-                    updated += 1;
                 } else {
                     inserted += 1;
+                    SyncAction::Created
+                };
+
+                if let Some(bus) = progress {
+                    bus.publish(ProgressEvent::ItemProcessed {
+                        connector_id: connector_id.clone(),
+                        kind: artifact.kind.clone(),
+                        action,
+                    });
                 }
 
                 let tags_json = serde_json::to_string(&artifact.tags)?;
@@ -514,7 +531,7 @@ impl Storage {
     }
 
     pub fn upsert_artifact(&self, artifact: &KnowledgeArtifact) -> Result<()> {
-        let _ = self.upsert_artifacts_batch(std::slice::from_ref(artifact))?;
+        let _ = self.upsert_artifacts_batch(std::slice::from_ref(artifact), None)?;
         Ok(())
     }
 

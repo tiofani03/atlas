@@ -1,7 +1,7 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
 use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde_json::Value;
 
@@ -126,6 +126,50 @@ impl Connector for SpreadsheetConnector {
 
     fn provider(&self) -> &str {
         "spreadsheet"
+    }
+
+    async fn verify(&self) -> Result<String> {
+        let paths = self.config.get_paths();
+        if paths.is_empty() {
+            bail!(
+                "No spreadsheet paths or URLs configured for connector '{}'",
+                self.id
+            );
+        }
+
+        let mut verified_count = 0;
+        for path_str in &paths {
+            if path_str.starts_with("http://") || path_str.starts_with("https://") {
+                let target_url = transform_google_sheets_url(path_str);
+                let mut req = self.client.get(&target_url);
+                if let Some(token) = &self.config.api_token {
+                    if !token.is_empty() {
+                        req = req.bearer_auth(token);
+                    }
+                }
+                let resp = req.send().await.with_context(|| {
+                    format!("Failed to fetch spreadsheet from URL: {}", path_str)
+                })?;
+                if !resp.status().is_success() {
+                    bail!(
+                        "Spreadsheet fetch for '{}' returned status {}",
+                        path_str,
+                        resp.status()
+                    );
+                }
+            } else if !std::path::Path::new(path_str).exists() {
+                bail!(
+                    "Spreadsheet file not found at local path: {}",
+                    path_str
+                );
+            }
+            verified_count += 1;
+        }
+
+        Ok(format!(
+            "Successfully verified {} spreadsheet source(s).",
+            verified_count
+        ))
     }
 
     async fn fetch_modified(&self, _since: Option<chrono::DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {

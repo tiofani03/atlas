@@ -71,7 +71,7 @@ async fn test_openapi_parsing_and_storage_pipeline() -> anyhow::Result<()> {
 
     let db_path = dir.path().join("test_openapi.db");
     let storage = Storage::new(&db_path)?;
-    storage.upsert_artifacts_batch(&artifacts)?;
+    storage.upsert_artifacts_batch(&artifacts, None)?;
 
     let search_results = storage.search_fts("charge", None, None, None, 10)?;
     assert!(!search_results.is_empty(), "FTS5 search should find OpenAPI endpoint specs");

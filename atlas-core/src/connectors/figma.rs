@@ -1,7 +1,7 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
 use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
@@ -100,6 +100,37 @@ impl Connector for FigmaConnector {
 
     fn provider(&self) -> &str {
         "figma"
+    }
+
+    async fn verify(&self) -> Result<String> {
+        let url = "https://api.figma.com/v1/me";
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Figma API: {}", e))?;
+
+        let status = resp.status();
+        let json: Value = resp.json().await.unwrap_or_default();
+
+        if status.is_success() {
+            let email = json["email"].as_str().unwrap_or("authenticated user");
+            let handle = json["handle"].as_str().unwrap_or("");
+            if handle.is_empty() {
+                Ok(format!("Connected to Figma successfully as '{}'.", email))
+            } else {
+                Ok(format!("Connected to Figma successfully as '{}' ({}).", handle, email))
+            }
+        } else if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let msg = json["err"]
+                .as_str()
+                .unwrap_or("Invalid or unauthorized credentials");
+            bail!("Figma authentication failed: {}", msg)
+        } else {
+            let msg = json["err"].as_str().unwrap_or("unknown error");
+            bail!("Figma verification failed with status {}: {}", status, msg)
+        }
     }
 
     async fn fetch_modified(&self, _since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {

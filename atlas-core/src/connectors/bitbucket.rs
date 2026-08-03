@@ -1,7 +1,7 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
 use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde_json::Value;
@@ -86,6 +86,38 @@ impl Connector for BitbucketConnector {
 
     fn provider(&self) -> &str {
         "bitbucket"
+    }
+
+    async fn verify(&self) -> Result<String> {
+        let url = format!("{}/user", self.base_url());
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Bitbucket API: {}", e))?;
+
+        let status = resp.status();
+        let json: Value = resp.json().await.unwrap_or_default();
+
+        if status.is_success() {
+            let username = json["username"].as_str().unwrap_or("authenticated user");
+            let display_name = json["display_name"]
+                .as_str()
+                .unwrap_or(username);
+            Ok(format!(
+                "Connected to Bitbucket successfully as '{}' ({}).",
+                display_name, username
+            ))
+        } else if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let msg = json["error"]["message"]
+                .as_str()
+                .unwrap_or("Invalid or unauthorized credentials");
+            bail!("Bitbucket authentication failed: {}", msg)
+        } else {
+            let msg = json["error"]["message"].as_str().unwrap_or("unknown error");
+            bail!("Bitbucket verification failed with status {}: {}", status, msg)
+        }
     }
 
     async fn fetch_modified(&self, _since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {

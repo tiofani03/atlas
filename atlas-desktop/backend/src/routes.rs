@@ -15,8 +15,6 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/api/status", get(status::get_status))
         .route("/api/storage/clear", post(status::clear_data))
-        .route("/api/clear", post(status::clear_data))
-        .route("/api/data/clear", post(status::clear_data))
         .route("/api/connectors", get(connectors::list_connectors))
         .route(
             "/api/connectors/jira",
@@ -41,10 +39,6 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/connectors/local_git",
             post(connectors::save_local_git_connector),
-        )
-        .route(
-            "/api/connectors/clickup",
-            post(connectors::save_clickup_connector),
         )
         .route(
             "/api/connectors/linear",
@@ -92,6 +86,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/connectors/delete", post(connectors::delete_connector))
         .route("/api/sync", post(sync::trigger_sync))
+        .route("/api/sync/cancel", post(sync::cancel_sync))
         .route("/api/sync/status", get(sync::get_sync_status))
         .route("/api/search", get(search::search_objects))
         .route("/api/objects/:id", get(search::get_object_by_id))

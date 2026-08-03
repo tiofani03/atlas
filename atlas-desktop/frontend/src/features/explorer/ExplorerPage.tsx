@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { KnowledgeObject } from '../../types';
@@ -16,12 +16,22 @@ import {
 } from 'lucide-react';
 
 export const ExplorerPage: React.FC = () => {
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(20);
   const [selectedObject, setSelectedObject] = useState<KnowledgeObject | null>(null);
+
+  // Debounce the raw input so we don't hit the backend on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   // Fetch active connectors to populate provider options dynamically
   const { data: connectors } = useQuery({
@@ -52,8 +62,7 @@ export const ExplorerPage: React.FC = () => {
   const totalPages = searchResponse?.total_pages || 1;
 
   const handleSearchChange = (val: string) => {
-    setSearchQuery(val);
-    setPage(1);
+    setSearchInput(val);
   };
 
   const handleProviderChange = (val: string) => {
@@ -100,7 +109,7 @@ export const ExplorerPage: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 dark:text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            value={searchQuery}
+            value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder='Search knowledge (e.g. "ADR", "Markdown", "Stripe API")...'
             className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition"
@@ -340,7 +349,20 @@ export const ExplorerPage: React.FC = () => {
       </div>
 
       {selectedObject && (
-        <ObjectDetailModal object={selectedObject} onClose={() => setSelectedObject(null)} />
+        <ObjectDetailModal
+          object={selectedObject}
+          onClose={() => setSelectedObject(null)}
+          onNavigate={(targetId) => {
+            // Follow a relationship edge: fetch the target artifact by its
+            // source_id and open it in the drawer.
+            api
+              .getObjectById(targetId)
+              .then((obj) => setSelectedObject(obj))
+              .catch(() => {
+                /* target may not be indexed — silently ignore */
+              });
+          }}
+        />
       )}
     </div>
   );

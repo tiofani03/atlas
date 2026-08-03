@@ -56,7 +56,7 @@ fn test_bitbucket_pr_storage_and_alias_resolution() -> anyhow::Result<()> {
         metadata: serde_json::json!({ "id": 105 }),
     };
 
-    storage.upsert_artifacts_batch(&[pr_artifact])?;
+    storage.upsert_artifacts_batch(&[pr_artifact], None)?;
 
     let matches = storage.resolve_artifact_by_alias("acme-devs/repo/pr/105")?;
     assert_eq!(matches.len(), 1);

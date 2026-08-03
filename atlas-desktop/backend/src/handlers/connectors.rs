@@ -1,5 +1,5 @@
 use crate::state::AppState;
-use atlas_core::ConnectorConfig;
+use atlas_core::{Connector, ConnectorConfig};
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,18 @@ pub struct ConnectorItemResponse {
     pub projects: Vec<String>,
     pub spaces: Vec<String>,
     pub repos: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub teams: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lists: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_keys: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub database_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organization: Option<String>,
     pub path: Option<String>,
     pub paths: Vec<String>,
     pub glob_patterns: Vec<String>,
@@ -161,9 +173,18 @@ pub struct SpreadsheetConfigPayload {
 #[derive(Deserialize)]
 pub struct ValidatePayload {
     pub provider: String,
+    #[serde(default)]
     pub instance_url: String,
+    #[serde(default)]
     pub email: String,
+    #[serde(default)]
     pub api_token: String,
+    #[serde(default)]
+    pub organization: Option<String>,
+    #[serde(default)]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 pub async fn list_connectors(State(state): State<AppState>) -> impl IntoResponse {
@@ -198,6 +219,12 @@ pub async fn list_connectors(State(state): State<AppState>) -> impl IntoResponse
             projects: conn_cfg.projects.clone(),
             spaces: conn_cfg.spaces.clone(),
             repos: conn_cfg.repos.clone(),
+            workspace: conn_cfg.workspace.clone(),
+            teams: conn_cfg.teams.clone(),
+            lists: conn_cfg.lists.clone(),
+            file_keys: conn_cfg.file_keys.clone(),
+            database_ids: conn_cfg.database_ids.clone(),
+            organization: conn_cfg.organization.clone(),
             path: conn_cfg.path.clone(),
             paths: conn_cfg.get_paths(),
             glob_patterns: conn_cfg.glob_patterns.clone(),
@@ -770,46 +797,62 @@ pub async fn save_spreadsheet_connector(
 pub async fn validate_credentials(
     Json(payload): Json<ValidatePayload>,
 ) -> impl IntoResponse {
+    // Providers whose verification is path/filesystem-based, not credential-based.
+    let path_based = matches!(
+        payload.provider.as_str(),
+        "markdown" | "local_git" | "spreadsheet"
+    );
+
     let test_cfg = ConnectorConfig {
         provider: payload.provider.clone(),
         instance_url: payload.instance_url,
         email: payload.email,
-        api_token: Some(payload.api_token),
+        api_token: (!payload.api_token.is_empty()).then(|| payload.api_token),
         api_token_env: None,
-        projects: Vec::new(),
-        spaces: Vec::new(),
-        repos: Vec::new(),
-        path: None,
-        paths: Vec::new(),
-        glob_patterns: Vec::new(),
+        organization: payload.organization,
+        workspace: payload.workspace,
+        path: payload.path.clone(),
+        paths: payload
+            .path
+            .as_ref()
+            .map(|p| p.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default(),
         ..Default::default()
     };
 
-    let result = match payload.provider.as_str() {
-        "jira" => atlas_core::JiraConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "confluence" => atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "github" => atlas_core::GithubConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "clickup" => atlas_core::ClickupConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "linear" => atlas_core::LinearConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "asana" => atlas_core::AsanaConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "azure_devops" => atlas_core::AzureDevopsConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "gitlab" => atlas_core::GitlabConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "bitbucket" => atlas_core::BitbucketConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "openapi" => atlas_core::OpenapiConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "figma" => atlas_core::FigmaConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "notion" => atlas_core::NotionConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "spreadsheet" => atlas_core::SpreadsheetConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        _ => Err(anyhow::anyhow!("Unsupported provider")),
+    let timeout_secs = if path_based { 15 } else { 30 };
+
+    let conn = match atlas_core::ConnectorInstance::build("test", &test_cfg) {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "valid": false, "message": err.to_string() })),
+            )
+        }
     };
 
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        conn.verify(),
+    )
+    .await;
+
     match result {
-        Ok(_) => (
+        Ok(Ok(message)) => (
             StatusCode::OK,
-            Json(serde_json::json!({ "valid": true, "message": "Credentials structure is valid." })),
+            Json(serde_json::json!({ "valid": true, "message": message })),
         ),
-        Err(err) => (
+        Ok(Err(err)) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "valid": false, "message": err.to_string() })),
+        ),
+        Err(_) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "valid": false,
+                "message": format!("Verification timed out after {} seconds.", timeout_secs)
+            })),
         ),
     }
 }

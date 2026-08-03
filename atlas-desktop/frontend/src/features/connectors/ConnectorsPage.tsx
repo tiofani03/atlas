@@ -766,7 +766,7 @@ export const ConnectorsPage: React.FC = () => {
                       urlLabel: 'API Token',
                       urlValue: 'Configured',
                       itemsLabel: 'File Keys',
-                      itemsValue: `${figmaConfig.repos?.length || 1} Key(s)`,
+                      itemsValue: `${figmaConfig.file_keys?.length || 0} Key(s)`,
                       lastSynced: figmaConfig.last_synced_at,
                     }
                   : undefined
@@ -839,7 +839,7 @@ export const ConnectorsPage: React.FC = () => {
                       urlLabel: 'Integration',
                       urlValue: 'Notion API',
                       itemsLabel: 'Databases',
-                      itemsValue: `${notionConfig.spaces?.length || 0} Registered`,
+                      itemsValue: `${notionConfig.database_ids?.length || 0} Registered`,
                       lastSynced: notionConfig.last_synced_at,
                     }
                   : undefined
@@ -1030,7 +1030,7 @@ export const ConnectorsPage: React.FC = () => {
         onSuccess={() => refetch()}
         initialConfig={figmaConfig ? {
           id: figmaConfig.id,
-          file_keys: figmaConfig.repos,
+          file_keys: figmaConfig.file_keys,
         } : undefined}
       />
       <ConfigureNotionModal
@@ -1039,7 +1039,7 @@ export const ConnectorsPage: React.FC = () => {
         onSuccess={() => refetch()}
         initialConfig={notionConfig ? {
           id: notionConfig.id,
-          database_ids: notionConfig.spaces,
+          database_ids: notionConfig.database_ids,
         } : undefined}
       />
       <ConfigureAsanaModal

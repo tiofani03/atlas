@@ -56,7 +56,7 @@ fn test_asana_task_storage_and_alias_resolution() -> anyhow::Result<()> {
         metadata: serde_json::json!({ "gid": "12093810293" }),
     };
 
-    storage.upsert_artifacts_batch(&[asana_task])?;
+    storage.upsert_artifacts_batch(&[asana_task], None)?;
 
     let matches = storage.resolve_artifact_by_alias("task:12093810293")?;
     assert_eq!(matches.len(), 1);

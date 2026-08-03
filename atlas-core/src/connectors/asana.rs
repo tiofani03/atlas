@@ -1,7 +1,7 @@
 use crate::config::ConnectorConfig;
 use crate::connectors::Connector;
 use crate::domain::{ArtifactKind, ArtifactRelationship, KnowledgeArtifact};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::Value;
@@ -29,7 +29,11 @@ impl AsanaConnector {
     }
 
     fn base_url(&self) -> String {
-        "https://app.asana.com/api/1.0".to_string()
+        if !self.config.instance_url.is_empty() {
+            self.config.instance_url.trim_end_matches('/').to_string()
+        } else {
+            "https://app.asana.com/api/1.0".to_string()
+        }
     }
 }
 
@@ -41,6 +45,32 @@ impl Connector for AsanaConnector {
 
     fn provider(&self) -> &str {
         "asana"
+    }
+
+    async fn verify(&self) -> Result<String> {
+        let url = format!("{}/users/me", self.base_url());
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Asana API: {}", e))?;
+
+        let status = resp.status();
+        let json: Value = resp.json().await.unwrap_or_default();
+
+        if status.is_success() {
+            let name = json["data"]["name"].as_str().unwrap_or("authenticated user");
+            Ok(format!("Connected to Asana successfully as '{}'.", name))
+        } else if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let msg = json["errors"][0]["message"]
+                .as_str()
+                .unwrap_or("Invalid or unauthorized credentials");
+            bail!("Asana authentication failed: {}", msg)
+        } else {
+            let err = json["errors"][0]["message"].as_str().unwrap_or("unknown error");
+            bail!("Asana verification failed with status {}: {}", status, err)
+        }
     }
 
     async fn fetch_modified(&self, _since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {

@@ -35,6 +35,7 @@ export const ConfigureBitbucketModal: React.FC<ModalProps> = ({ isOpen, onClose,
         instance_url: instanceUrl,
         email,
         api_token: apiToken,
+        workspace: workspace || undefined,
       });
       setValidationResult(res);
     } catch (err: unknown) {

@@ -35,6 +35,7 @@ export const ConfigureAzureDevopsModal: React.FC<ModalProps> = ({ isOpen, onClos
         instance_url: instanceUrl,
         email: '',
         api_token: apiToken,
+        organization: organization || undefined,
       });
       setValidationResult(res);
     } catch (err: unknown) {

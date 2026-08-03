@@ -143,7 +143,15 @@ export const api = {
     }),
 
     
-  validateCredentials: (data: { provider: string; instance_url: string; email: string; api_token: string }) =>
+  validateCredentials: (data: {
+    provider: string;
+    instance_url: string;
+    email: string;
+    api_token: string;
+    organization?: string;
+    workspace?: string;
+    path?: string;
+  }) =>
     fetchJson<{ valid: boolean; message: string }>(`${API_BASE}/connectors/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -158,6 +166,12 @@ export const api = {
     }),
     
   getSyncStatus: () => fetchJson<SyncProgressInfo>(`${API_BASE}/sync/status`),
+
+  cancelSync: () =>
+    fetchJson<{ success: boolean; message: string }>(`${API_BASE}/sync/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }),
   
   searchObjects: (query?: string, objectType?: string, tag?: string, limit = 20, page = 1, provider?: string) => {
     const params = new URLSearchParams();

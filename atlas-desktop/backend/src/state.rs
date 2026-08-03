@@ -23,6 +23,7 @@ pub struct ActiveSyncProgress {
 pub struct AppState {
     pub config_path: PathBuf,
     pub sync_progress: Arc<RwLock<ActiveSyncProgress>>,
+    pub cancel_token: Arc<tokio::sync::Mutex<Option<tokio_util::sync::CancellationToken>>>,
 }
 
 impl AppState {
@@ -30,6 +31,7 @@ impl AppState {
         Self {
             config_path,
             sync_progress: Arc::new(RwLock::new(ActiveSyncProgress::default())),
+            cancel_token: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
