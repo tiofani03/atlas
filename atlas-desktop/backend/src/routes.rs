@@ -1,7 +1,7 @@
-use crate::handlers::{connectors, search, status, sync};
+use crate::handlers::{connectors, mcp, search, status, sync};
 use crate::state::AppState;
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -41,10 +41,6 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/connectors/local_git",
             post(connectors::save_local_git_connector),
-        )
-        .route(
-            "/api/connectors/clickup",
-            post(connectors::save_clickup_connector),
         )
         .route(
             "/api/connectors/linear",
@@ -96,6 +92,26 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/search", get(search::search_objects))
         .route("/api/objects/:id", get(search::get_object_by_id))
         .route("/api/context/:id", get(search::get_context))
+        .route(
+            "/api/mcp/servers",
+            get(mcp::list_mcp_servers).post(mcp::save_mcp_server),
+        )
+        .route("/api/mcp/servers/:name", delete(mcp::delete_mcp_server))
+        .route("/api/mcp/servers/:name/test", post(mcp::test_mcp_server))
+        .route("/api/mcp/snippet", get(mcp::get_mcp_snippets))
+        .route("/api/mcp/snippets", get(mcp::get_mcp_snippets))
         .layer(cors)
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_create_router_no_panics() {
+        let state = AppState::new(PathBuf::from("/tmp/nonexistent_config.toml"));
+        let _router = create_router(state);
+    }
 }

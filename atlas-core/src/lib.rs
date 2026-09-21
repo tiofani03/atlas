@@ -9,7 +9,8 @@ pub mod resilience;
 pub mod storage;
 pub mod sync;
 
-pub use config::{Config, ConnectorConfig};
+pub use config::{Config, ConnectorConfig, McpServerConfig};
+pub use mcp::{run_stdio_mcp_server, McpClient, McpHub};
 pub use connectors::{
     asana::AsanaConnector, azure_devops::AzureDevopsConnector, bitbucket::BitbucketConnector,
     clickup::ClickupConnector, confluence::ConfluenceConnector, figma::FigmaConnector,

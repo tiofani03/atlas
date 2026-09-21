@@ -4,10 +4,8 @@ mod progress;
 
 use anyhow::Result;
 use atlas_core::{
-    AsanaConnector, AzureDevopsConnector, BitbucketConnector, ClickupConnector, ConfluenceConnector, Config,
-    Connector, ConnectorConfig, ConnectorInstance, FigmaConnector, GithubConnector, GitlabConnector,
-    JiraConnector, LinearConnector, LocalGitConnector, MarkdownConnector, NotionConnector, OpenapiConnector,
-    SpreadsheetConnector, Storage, SyncEngine,
+    Config, Connector, ConnectorConfig, ConnectorInstance, McpClient, McpHub, McpServerConfig, Storage,
+    SyncEngine, run_stdio_mcp_server,
 };
 use clap::{Parser, Subcommand};
 
@@ -128,6 +126,10 @@ enum Commands {
         /// Artifact ID, source ID, or repository name (when target type is specified)
         target_id: Option<String>,
 
+        /// Associate or override Figma design target (URL, key, or clone key) for this context
+        #[arg(long)]
+        figma: Option<String>,
+
         /// Relationship graph traversal depth limit [default: 2]
         #[arg(short, long, default_value_t = 2)]
         depth: usize,
@@ -200,8 +202,49 @@ enum Commands {
         force: bool,
     },
 
-    /// Run stdio Model Context Protocol (MCP) Server for AI tools
-    Mcp,
+    /// Model Context Protocol (MCP) Hub & Gateway operations
+    Mcp {
+        #[command(subcommand)]
+        action: Option<McpSubcommands>,
+    },
+
+    /// Display full document content in terminal (Markdown, Confluence, Notion, ADR)
+    Doc {
+        /// Document title, path, filename, or ID
+        target: Option<String>,
+
+        /// List all available documents
+        #[arg(short, long)]
+        list: bool,
+
+        /// Output raw document body only without headers (ideal for piping to glow or pager)
+        #[arg(long)]
+        raw: bool,
+
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List and browse indexed engineering documents
+    Docs {
+        /// Optional query filter
+        query: Option<String>,
+    },
+
+    /// Print full content of any artifact (ticket, document, PR, issue) to terminal
+    Cat {
+        /// Artifact ID, key, title, path, or alias (e.g. INIT-358, vision.md, PR#42)
+        target: String,
+
+        /// Output raw body only without headers (ideal for piping to glow or pager)
+        #[arg(long)]
+        raw: bool,
+
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Rebuild relationship links and commit indices across existing database artifacts
     Reindex {
@@ -258,6 +301,65 @@ enum Commands {
 
     /// Run system and connector diagnostics (Doctor mode)
     Doctor,
+}
+ 
+#[derive(Subcommand, Debug, Clone, PartialEq)]
+enum McpSubcommands {
+    /// Start stdio MCP Hub server (default if no subcommand specified)
+    Serve,
+
+    /// List configured MCP servers
+    List,
+
+    /// Add or update an MCP server configuration
+    Add {
+        /// Server identifier name
+        name: String,
+
+        /// Command executable to run
+        #[arg(long)]
+        command: String,
+
+        /// Arguments passed to the command (multiple flags, comma-separated, or space-separated)
+        #[arg(short, long, allow_hyphen_values = true)]
+        args: Vec<String>,
+
+        /// Environment variables in KEY=VAL format (multiple flags or comma-separated)
+        #[arg(short, long)]
+        env: Vec<String>,
+
+        /// Tool prefix for namespacing upstream tools
+        #[arg(short, long)]
+        prefix: Option<String>,
+
+        /// Disable the server
+        #[arg(long)]
+        disabled: bool,
+    },
+
+    /// Test connectivity and discover tools for an MCP server
+    Test {
+        /// Server identifier name to test
+        name: String,
+    },
+
+    /// Remove an MCP server configuration
+    Remove {
+        /// Server identifier name to remove
+        name: String,
+    },
+
+    /// Manage aliases for an MCP server (e.g. atx mcp alias figma INIT-358 wOeG8ZbAQwzyrtZbWpAmIB)
+    Alias {
+        /// Server identifier name (e.g. figma)
+        server: String,
+
+        /// Source alias or ticket key (e.g. INIT-358 or CANONICAL_KEY)
+        from: String,
+
+        /// Target cloned key or URL (e.g. wOeG8ZbAQwzyrtZbWpAmIB)
+        to: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -569,6 +671,48 @@ enum ConfigSubcommands {
         #[arg(long)]
         add_paths: Option<String>,
     },
+}
+
+pub(crate) fn parse_mcp_args(raw_args: &[String]) -> Vec<String> {
+    let mut parsed = Vec::new();
+    for item in raw_args {
+        if item.contains(',') {
+            for part in item.split(',') {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    parsed.push(trimmed.to_string());
+                }
+            }
+        } else if item.contains(' ') {
+            for part in item.split_whitespace() {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    parsed.push(trimmed.to_string());
+                }
+            }
+        } else if !item.trim().is_empty() {
+            parsed.push(item.trim().to_string());
+        }
+    }
+    parsed
+}
+
+pub(crate) fn parse_mcp_env(raw_env: &[String]) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    for item in raw_env {
+        for part in item.split(',') {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some((k, v)) = trimmed.split_once('=') {
+                map.insert(k.trim().to_string(), v.trim().to_string());
+            } else {
+                eprintln!("Warning: Invalid env format '{}', expected KEY=VAL", trimmed);
+            }
+        }
+    }
+    map
 }
 
 #[tokio::main]
@@ -1337,6 +1481,7 @@ async fn main() -> Result<()> {
         Commands::Context {
             target,
             target_id,
+            figma,
             depth,
             profile,
             max_commits,
@@ -1344,13 +1489,34 @@ async fn main() -> Result<()> {
             verbose,
             raw,
         } => {
-            let cfg = Config::load_from_path(&config_path)?;
+            let mut cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
             let (kind_param, id_param) = match target_id {
                 Some(ref id) => (Some(target.as_str()), id.as_str()),
                 None => (None, target.as_str()),
             };
+
+            let mut resolved_design_info = None;
+            if let Some(ref figma_target) = figma {
+                let (clean_key, node_id) = atlas_core::mcp::resolver::parse_figma_target(figma_target);
+                if let Some(figma_srv) = cfg.mcp_servers.get_mut("figma") {
+                    let alias_target = node_id
+                        .as_deref()
+                        .map(|node| format!("{}:{}", clean_key, node))
+                        .unwrap_or_else(|| clean_key.clone());
+                    figma_srv.aliases.insert(id_param.to_string(), alias_target);
+                    let _ = cfg.save_to_path(&config_path);
+                }
+                resolved_design_info = Some((clean_key, node_id));
+            } else {
+                let empty_aliases = std::collections::HashMap::new();
+                let figma_aliases = cfg.mcp_servers.get("figma").map(|s| &s.aliases).unwrap_or(&empty_aliases);
+                let (resolved_key, node_id) = atlas_core::mcp::resolver::resolve_figma_target(id_param, figma_aliases, None, None);
+                if resolved_key != id_param {
+                    resolved_design_info = Some((resolved_key, node_id));
+                }
+            }
 
             let builder = atlas_core::ContextBuilder::new(&storage);
             let mut options = atlas_core::ContextOptions::default();
@@ -1362,8 +1528,23 @@ async fn main() -> Result<()> {
             let pkg = builder.build(kind_param, id_param, &options)?;
 
             if json {
-                println!("{}", serde_json::to_string_pretty(&pkg)?);
+                let mut val = serde_json::to_value(&pkg)?;
+                if let Some((ref dkey, ref node)) = resolved_design_info {
+                    val["figma"] = serde_json::json!({
+                        "fileKey": dkey,
+                        "nodeId": node,
+                        "url": format!("https://www.figma.com/design/{}", dkey)
+                    });
+                }
+                println!("{}", serde_json::to_string_pretty(&val)?);
             } else {
+                if let Some((ref dkey, ref node)) = resolved_design_info {
+                    println!("🎨 [Atlas MCP Hub] Linked Figma Design: https://www.figma.com/design/{}", dkey);
+                    if let Some(n) = node {
+                        println!("   Node ID: {}", n);
+                    }
+                    println!();
+                }
                 println!(
                     "{}",
                     formatter::format_context_package(&pkg, verbose, raw)
@@ -1474,11 +1655,271 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Mcp => {
+        Commands::Mcp { action } => {
+            let action = action.unwrap_or(McpSubcommands::Serve);
+            match action {
+                McpSubcommands::Serve => {
+                    let cfg = Config::load_from_path(&config_path)?;
+                    let storage = Storage::new(cfg.resolve_db_path())?;
+                    let hub = McpHub::from_config(&cfg, storage).await?;
+                    run_stdio_mcp_server(hub).await?;
+                }
+
+                McpSubcommands::List => {
+                    let cfg = Config::load_from_path(&config_path)?;
+                    let mut servers: Vec<_> = cfg.mcp_servers.iter().collect();
+                    servers.sort_by_key(|(k, _)| *k);
+
+                    println!("┌─{0:─<20}─┬─{0:─<40}─┬─{0:─<15}─┬─{0:─<10}─┐", "");
+                    println!("│ {:<20} │ {:<40} │ {:<15} │ {:<10} │", "MCP SERVER", "COMMAND", "PREFIX", "STATE");
+                    println!("├─{0:─<20}─┼─{0:─<40}─┼─{0:─<15}─┼─{0:─<10}─┤", "");
+
+                    if servers.is_empty() {
+                        println!("│ {:<94} │", "(No MCP servers configured in config.toml)");
+                    } else {
+                        for (name, server_cfg) in servers {
+                            let cmd_display = if server_cfg.args.is_empty() {
+                                server_cfg.command.clone()
+                            } else {
+                                format!("{} {}", server_cfg.command, server_cfg.args.join(" "))
+                            };
+                            let prefix_display = server_cfg.prefix.as_deref().unwrap_or("-");
+                            let state_display = if server_cfg.enabled.unwrap_or(true) {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            };
+                            println!(
+                                "│ {:<20} │ {:<40} │ {:<15} │ {:<10} │",
+                                formatter::safe_truncate(name, 20),
+                                formatter::safe_truncate(&cmd_display, 40),
+                                formatter::safe_truncate(prefix_display, 15),
+                                state_display
+                            );
+                        }
+                    }
+                    println!("└─{0:─<20}─┴─{0:─<40}─┴─{0:─<15}─┴─{0:─<10}─┘", "");
+                }
+
+                McpSubcommands::Add {
+                    name,
+                    command,
+                    args,
+                    env,
+                    prefix,
+                    disabled,
+                } => {
+                    let mut cfg = Config::load_from_path(&config_path)?;
+                    let existing = cfg.mcp_servers.get(&name).cloned();
+
+                    let parsed_args = parse_mcp_args(&args);
+                    let final_args = if !args.is_empty() {
+                        parsed_args
+                    } else if let Some(existing_cfg) = &existing {
+                        existing_cfg.args.clone()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let mut env_map = if let Some(existing_cfg) = &existing {
+                        existing_cfg.env.clone()
+                    } else {
+                        std::collections::HashMap::new()
+                    };
+                    for (k, v) in parse_mcp_env(&env) {
+                        env_map.insert(k, v);
+                    }
+
+                    let final_prefix = if let Some(p) = prefix {
+                        if p.is_empty() {
+                            None
+                        } else {
+                            Some(p)
+                        }
+                    } else if let Some(existing_cfg) = &existing {
+                        existing_cfg.prefix.clone()
+                    } else {
+                        None
+                    };
+
+                    let final_enabled = if disabled {
+                        Some(false)
+                    } else {
+                        Some(true)
+                    };
+
+                    let existing_aliases = cfg
+                        .mcp_servers
+                        .get(&name)
+                        .map(|s| s.aliases.clone())
+                        .unwrap_or_default();
+
+                    let new_server = McpServerConfig {
+                        command: command.clone(),
+                        args: final_args.clone(),
+                        env: env_map,
+                        enabled: final_enabled,
+                        prefix: final_prefix.clone(),
+                        aliases: existing_aliases,
+                    };
+
+                    cfg.mcp_servers.insert(name.clone(), new_server);
+                    cfg.save_to_path(&config_path)?;
+
+                    println!("MCP server '{}' configured successfully!", name);
+                    println!("  Command: {} {}", command, final_args.join(" "));
+                    if let Some(ref p) = final_prefix {
+                        println!("  Prefix:  {}", p);
+                    }
+                    if disabled {
+                        println!("  State:   disabled");
+                    } else {
+                        println!("  State:   enabled");
+                    }
+                }
+
+                McpSubcommands::Test { name } => {
+                    let cfg = Config::load_from_path(&config_path)?;
+                    let server_cfg = match cfg.mcp_servers.get(&name) {
+                        Some(c) => c,
+                        None => {
+                            eprintln!("Error: MCP server '{}' not found in configuration.", name);
+                            anyhow::bail!("MCP server '{}' not found in config", name);
+                        }
+                    };
+
+                    println!("Testing connectivity to MCP server '{}'...", name);
+                    println!("  Command: {} {}", server_cfg.command, server_cfg.args.join(" "));
+                    if let Some(ref pfx) = server_cfg.prefix {
+                        println!("  Prefix:  {}", pfx);
+                    }
+
+                    let mut client = match McpClient::start(&name, server_cfg).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("✗ Failed to spawn MCP server '{}': {:#}", name, e);
+                            anyhow::bail!("MCP server test failed: {}", e);
+                        }
+                    };
+
+                    let init_result = match client.initialize().await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("✗ Failed initialization handshake with MCP server '{}': {:#}", name, e);
+                            let _ = client.close().await;
+                            anyhow::bail!("MCP handshake failed: {}", e);
+                        }
+                    };
+
+                    println!("✓ Successfully connected and initialized MCP server '{}'!", name);
+                    if let Some(server_info) = init_result.get("serverInfo") {
+                        let sname = server_info.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let sversion = server_info.get("version").and_then(|v| v.as_str()).unwrap_or("");
+                        if !sversion.is_empty() {
+                            println!("  Remote server: {} (v{})", sname, sversion);
+                        } else {
+                            println!("  Remote server: {}", sname);
+                        }
+                    }
+
+                    let tools = match client.list_tools().await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("✗ Failed to list tools from MCP server '{}': {:#}", name, e);
+                            let _ = client.close().await;
+                            anyhow::bail!("Failed to list tools: {}", e);
+                        }
+                    };
+
+                    let _ = client.close().await;
+
+                    println!("\nDiscovered {} tool(s):", tools.len());
+                    if tools.is_empty() {
+                        println!("  (No tools registered by this server)");
+                    } else {
+                        println!("┌─{0:─<30}─┬─{0:─<54}─┐", "");
+                        println!("│ {:<30} │ {:<54} │", "TOOL NAME", "DESCRIPTION");
+                        println!("├─{0:─<30}─┼─{0:─<54}─┤", "");
+                        for tool in &tools {
+                            let tool_name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                            let desc = tool.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                            let single_line_desc = desc.lines().next().unwrap_or("").trim();
+                            println!(
+                                "│ {:<30} │ {:<54} │",
+                                formatter::safe_truncate(tool_name, 30),
+                                formatter::safe_truncate(single_line_desc, 54),
+                            );
+                        }
+                        println!("└─{0:─<30}─┴─{0:─<54}─┘", "");
+                        if let Some(ref pfx) = server_cfg.prefix {
+                            println!("\nNote: In the Atlas MCP Hub, these tools will be exposed with prefix '{}_'.", pfx);
+                        }
+                    }
+                }
+
+                McpSubcommands::Remove { name } => {
+                    let mut cfg = Config::load_from_path(&config_path)?;
+                    if cfg.mcp_servers.remove(&name).is_some() {
+                        cfg.save_to_path(&config_path)?;
+                        println!("MCP server '{}' removed successfully!", name);
+                    } else {
+                        println!("MCP server '{}' not found in configuration.", name);
+                    }
+                }
+
+                McpSubcommands::Alias { server, from, to } => {
+                    let mut cfg = Config::load_from_path(&config_path)?;
+                    let server_cfg = match cfg.mcp_servers.get_mut(&server) {
+                        Some(c) => c,
+                        None => {
+                            eprintln!("Error: MCP server '{}' not found in configuration.", server);
+                            anyhow::bail!("MCP server '{}' not found in config", server);
+                        }
+                    };
+
+                    let (clean_to, node_opt) = atlas_core::mcp::resolver::parse_figma_target(&to);
+                    let final_target = if let Some(node) = node_opt {
+                        format!("{}:{}", clean_to, node)
+                    } else {
+                        clean_to
+                    };
+
+                    server_cfg.aliases.insert(from.clone(), final_target.clone());
+                    cfg.save_to_path(&config_path)?;
+
+                    println!("✓ Alias mapped for MCP server '{}':", server);
+                    println!("  '{}' -> '{}'", from, final_target);
+                }
+            }
+        }
+
+        Commands::Docs { query } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+            list_or_search_docs(&storage, query.as_deref())?;
+        }
+
+        Commands::Doc {
+            target,
+            list,
+            raw,
+            json,
+        } => {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
-            atlas_core::mcp::run_stdio_mcp_server(storage).await?;
+            if list || target.is_none() {
+                list_or_search_docs(&storage, None)?;
+            } else {
+                let target_str = target.unwrap();
+                display_doc(&storage, &target_str, raw, json)?;
+            }
+        }
+
+        Commands::Cat { target, raw, json } => {
+            let cfg = Config::load_from_path(&config_path)?;
+            let storage = Storage::new(cfg.resolve_db_path())?;
+            display_doc(&storage, &target, raw, json)?;
         }
 
         Commands::Reindex { target: _ } | Commands::Repair { target: _ } => {
@@ -1764,3 +2205,420 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+fn list_or_search_docs(storage: &Storage, query: Option<&str>) -> Result<()> {
+    let artifacts = if let Some(q) = query {
+        if !q.trim().is_empty() {
+            storage.search_fts(q, Some("document"), None, None, 50)?
+        } else {
+            storage.query_structured(Some("document"), None, None, 100)?
+        }
+    } else {
+        storage.query_structured(Some("document"), None, None, 100)?
+    };
+
+    if artifacts.is_empty() {
+        if let Some(q) = query {
+            println!("No documents matching '{}' found in context graph.", q);
+        } else {
+            println!("No documents indexed yet. Run 'atx sync' to synchronize documents from connectors.");
+        }
+        return Ok(());
+    }
+
+    println!("Found {} indexed document(s):\n", artifacts.len());
+    println!("┌─{0:─<4}─┬─{0:─<40}─┬─{0:─<35}─┬─{0:─<12}─┐", "");
+    println!("│ {:<4} │ {:<40} │ {:<35} │ {:<12} │", "#", "DOCUMENT TITLE", "PATH / SOURCE ID", "PROVIDER");
+    println!("├─{0:─<4}─┼─{0:─<40}─┼─{0:─<35}─┼─{0:─<12}─┤", "");
+
+    for (idx, art) in artifacts.iter().enumerate() {
+        let title = formatter::safe_truncate(&art.title, 40);
+        let path = formatter::safe_truncate(&art.source_id, 35);
+        let provider = formatter::safe_truncate(&art.provider, 12);
+        println!("│ {:<4} │ {:<40} │ {:<35} │ {:<12} │", idx + 1, title, path, provider);
+    }
+    println!("└─{0:─<4}─┴─{0:─<40}─┴─{0:─<35}─┴─{0:─<12}─┘", "");
+    println!("\n💡 Tip: Run 'atx doc <title_or_path>' to read the full document in terminal.");
+    println!("        Use 'atx doc <title_or_path> --raw' to output clean markdown (pipeable to glow/pager).");
+
+    Ok(())
+}
+
+fn display_doc(storage: &Storage, target: &str, raw: bool, json_output: bool) -> Result<()> {
+    // 1. Try alias resolution first
+    let mut candidates = storage.resolve_artifact_by_alias(target)?;
+
+    // 2. If no alias resolution, try search in documents
+    if candidates.is_empty() {
+        candidates = storage.search_fts(target, Some("document"), None, None, 10)?;
+    }
+
+    // 3. If still empty, search across all artifact kinds
+    if candidates.is_empty() {
+        candidates = storage.search_fts(target, None, None, None, 10)?;
+    }
+
+    if candidates.is_empty() {
+        println!("Artifact or document '{}' not found in context graph.", target);
+        println!("Run 'atx docs' to browse documents, or 'atx search \"{}\"' to search globally.", target);
+        return Ok(());
+    }
+
+    // Check if one candidate is an exact match on source_id or title
+    let target_trimmed = target.trim();
+    let exact_match = candidates.iter().position(|c| {
+        c.source_id.eq_ignore_ascii_case(target_trimmed)
+            || c.source_id.ends_with(target_trimmed)
+            || c.title.eq_ignore_ascii_case(target_trimmed)
+    });
+
+    let selected = if candidates.len() == 1 {
+        &candidates[0]
+    } else if let Some(idx) = exact_match {
+        &candidates[idx]
+    } else {
+        println!("Found {} artifacts matching '{}':\n", candidates.len(), target);
+        for (idx, c) in candidates.iter().enumerate() {
+            println!("{:2}. [{}] {} ({})", idx + 1, c.kind.to_string().to_uppercase(), c.title, c.source_id);
+        }
+        println!("\nSpecify exact ID or path: 'atx cat <id>' or 'atx doc <path>'");
+        return Ok(());
+    };
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(selected)?);
+        return Ok(());
+    }
+
+    if raw {
+        print!("{}", selected.body);
+        if !selected.body.ends_with('\n') {
+            println!();
+        }
+        return Ok(());
+    }
+
+    // Formatted terminal document view
+    let divider = "═".repeat(70);
+    println!("{}", divider);
+    let kind_upper = selected.kind.to_string().to_uppercase();
+    let kind_icon = match selected.kind {
+        atlas_core::ArtifactKind::Ticket => "🎫",
+        atlas_core::ArtifactKind::PullRequest => "🔀",
+        atlas_core::ArtifactKind::Commit => "💾",
+        atlas_core::ArtifactKind::Issue => "⚠️",
+        atlas_core::ArtifactKind::Design => "🎨",
+        _ => "📄",
+    };
+    println!("{} [{}] {}", kind_icon, kind_upper, selected.title);
+    println!("ID: {} | Provider: {}", selected.source_id, selected.provider);
+    if let Some(ref repo) = selected.repository {
+        println!("Repository: {}", repo);
+    }
+    if !selected.source_url.is_empty() {
+        println!("URL: {}", selected.source_url);
+    }
+    println!("{}", divider);
+    println!();
+    println!("{}", selected.body);
+    println!();
+    println!("{}", "─".repeat(70));
+    println!("💡 Hint: Use 'atx cat \"{}\" --raw' for pure content without headers.", target);
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_core::{ArtifactKind, KnowledgeArtifact};
+
+    #[test]
+    fn test_cli_mcp_default() {
+        let cli = Cli::try_parse_from(["atx", "mcp"]).expect("parse atx mcp");
+        match cli.command {
+            Commands::Mcp { action } => assert_eq!(action, None),
+            _ => panic!("expected Commands::Mcp"),
+        }
+    }
+
+    #[test]
+    fn test_cli_mcp_serve() {
+        let cli = Cli::try_parse_from(["atx", "mcp", "serve"]).expect("parse atx mcp serve");
+        match cli.command {
+            Commands::Mcp { action } => assert_eq!(action, Some(McpSubcommands::Serve)),
+            _ => panic!("expected Commands::Mcp"),
+        }
+    }
+
+    #[test]
+    fn test_cli_mcp_list() {
+        let cli = Cli::try_parse_from(["atx", "mcp", "list"]).expect("parse atx mcp list");
+        match cli.command {
+            Commands::Mcp { action } => assert_eq!(action, Some(McpSubcommands::List)),
+            _ => panic!("expected Commands::Mcp"),
+        }
+    }
+
+    #[test]
+    fn test_cli_mcp_add_basic() {
+        let cli = Cli::try_parse_from([
+            "atx", "mcp", "add", "test-echo", "--command", "echo", "--args", "hello",
+        ])
+        .expect("parse atx mcp add");
+        match cli.command {
+            Commands::Mcp {
+                action:
+                    Some(McpSubcommands::Add {
+                        name,
+                        command,
+                        args,
+                        env,
+                        prefix,
+                        disabled,
+                    }),
+            } => {
+                assert_eq!(name, "test-echo");
+                assert_eq!(command, "echo");
+                assert_eq!(args, vec!["hello"]);
+                assert!(env.is_empty());
+                assert_eq!(prefix, None);
+                assert!(!disabled);
+            }
+            _ => panic!("expected Commands::Mcp Add"),
+        }
+    }
+
+    #[test]
+    fn test_cli_mcp_add_all_flags() {
+        let cli = Cli::try_parse_from([
+            "atx",
+            "mcp",
+            "add",
+            "figma",
+            "--command",
+            "npx",
+            "--args",
+            "-y @figma/mcp",
+            "--env",
+            "TOKEN=123",
+            "--prefix",
+            "figma",
+            "--disabled",
+        ])
+        .expect("parse atx mcp add with all flags");
+        match cli.command {
+            Commands::Mcp {
+                action:
+                    Some(McpSubcommands::Add {
+                        name,
+                        command,
+                        args,
+                        env,
+                        prefix,
+                        disabled,
+                    }),
+            } => {
+                assert_eq!(name, "figma");
+                assert_eq!(command, "npx");
+                assert_eq!(args, vec!["-y @figma/mcp"]);
+                assert_eq!(env, vec!["TOKEN=123"]);
+                assert_eq!(prefix, Some("figma".to_string()));
+                assert!(disabled);
+            }
+            _ => panic!("expected Commands::Mcp Add"),
+        }
+    }
+
+    #[test]
+    fn test_cli_mcp_test() {
+        let cli = Cli::try_parse_from(["atx", "mcp", "test", "my-server"]).expect("parse atx mcp test");
+        match cli.command {
+            Commands::Mcp {
+                action: Some(McpSubcommands::Test { name }),
+            } => {
+                assert_eq!(name, "my-server");
+            }
+            _ => panic!("expected Commands::Mcp Test"),
+        }
+    }
+
+    #[test]
+    fn test_cli_mcp_remove() {
+        let cli = Cli::try_parse_from(["atx", "mcp", "remove", "my-server"]).expect("parse atx mcp remove");
+        match cli.command {
+            Commands::Mcp {
+                action: Some(McpSubcommands::Remove { name }),
+            } => {
+                assert_eq!(name, "my-server");
+            }
+            _ => panic!("expected Commands::Mcp Remove"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mcp_args_various_formats() {
+        assert_eq!(
+            parse_mcp_args(&["hello".to_string()]),
+            vec!["hello".to_string()]
+        );
+        assert_eq!(
+            parse_mcp_args(&["hello,world".to_string()]),
+            vec!["hello".to_string(), "world".to_string()]
+        );
+        assert_eq!(
+            parse_mcp_args(&["hello, world".to_string()]),
+            vec!["hello".to_string(), "world".to_string()]
+        );
+        assert_eq!(
+            parse_mcp_args(&["-y @figma/mcp".to_string()]),
+            vec!["-y".to_string(), "@figma/mcp".to_string()]
+        );
+        assert_eq!(
+            parse_mcp_args(&["-y".to_string(), "@figma/mcp".to_string()]),
+            vec!["-y".to_string(), "@figma/mcp".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_parse_mcp_env_various_formats() {
+        let env1 = parse_mcp_env(&["FOO=BAR".to_string(), "BAZ=QUX".to_string()]);
+        assert_eq!(env1.get("FOO").map(|s| s.as_str()), Some("BAR"));
+        assert_eq!(env1.get("BAZ").map(|s| s.as_str()), Some("QUX"));
+
+        let env2 = parse_mcp_env(&["FOO=BAR,BAZ=QUX".to_string()]);
+        assert_eq!(env2.get("FOO").map(|s| s.as_str()), Some("BAR"));
+        assert_eq!(env2.get("BAZ").map(|s| s.as_str()), Some("QUX"));
+
+        let env3 = parse_mcp_env(&["COMPLEX=val=with=equals".to_string()]);
+        assert_eq!(env3.get("COMPLEX").map(|s| s.as_str()), Some("val=with=equals"));
+    }
+
+    #[test]
+    fn test_cli_mcp_alias() {
+        let cli = Cli::try_parse_from(["atx", "mcp", "alias", "figma", "INIT-358", "wOeG8ZbAQwzyrtZbWpAmIB"])
+            .expect("parse atx mcp alias");
+        match cli.command {
+            Commands::Mcp {
+                action: Some(McpSubcommands::Alias { server, from, to }),
+            } => {
+                assert_eq!(server, "figma");
+                assert_eq!(from, "INIT-358");
+                assert_eq!(to, "wOeG8ZbAQwzyrtZbWpAmIB");
+            }
+            _ => panic!("expected Commands::Mcp Alias"),
+        }
+    }
+
+    #[test]
+    fn test_cli_context_figma_flag() {
+        let cli = Cli::try_parse_from(["atx", "context", "INIT-358", "--figma", "https://www.figma.com/design/wOeG8ZbAQwzyrtZbWpAmIB/Title"])
+            .expect("parse atx context --figma");
+        match cli.command {
+            Commands::Context {
+                target,
+                figma,
+                ..
+            } => {
+                assert_eq!(target, "INIT-358");
+                assert_eq!(
+                    figma.as_deref(),
+                    Some("https://www.figma.com/design/wOeG8ZbAQwzyrtZbWpAmIB/Title")
+                );
+            }
+            _ => panic!("expected Commands::Context"),
+        }
+    }
+
+    #[test]
+    fn test_cli_doc_command() {
+        let cli = Cli::try_parse_from(["atx", "doc", "vision.md", "--raw"])
+            .expect("parse atx doc vision.md --raw");
+        match cli.command {
+            Commands::Doc {
+                target,
+                list,
+                raw,
+                json,
+            } => {
+                assert_eq!(target.as_deref(), Some("vision.md"));
+                assert!(!list);
+                assert!(raw);
+                assert!(!json);
+            }
+            _ => panic!("expected Commands::Doc"),
+        }
+    }
+
+    #[test]
+    fn test_cli_docs_command() {
+        let cli = Cli::try_parse_from(["atx", "docs", "vision"])
+            .expect("parse atx docs vision");
+        match cli.command {
+            Commands::Docs { query } => {
+                assert_eq!(query.as_deref(), Some("vision"));
+            }
+            _ => panic!("expected Commands::Docs"),
+        }
+    }
+
+    #[test]
+    fn test_cli_cat_command() {
+        let cli = Cli::try_parse_from(["atx", "cat", "INIT-358", "--raw"])
+            .expect("parse atx cat INIT-358 --raw");
+        match cli.command {
+            Commands::Cat {
+                target,
+                raw,
+                json,
+            } => {
+                assert_eq!(target, "INIT-358");
+                assert!(raw);
+                assert!(!json);
+            }
+            _ => panic!("expected Commands::Cat"),
+        }
+    }
+
+    #[test]
+    fn test_display_doc_and_cat_resolution() -> anyhow::Result<()> {
+        let tmp_file = tempfile::NamedTempFile::new()?;
+        let storage = Storage::new(tmp_file.path())?;
+
+        let ticket = KnowledgeArtifact {
+            id: KnowledgeArtifact::generate_id("jira", "https://jira.example.com", "INIT-358"),
+            kind: ArtifactKind::Ticket,
+            title: "Refund Partial Alfagift".to_string(),
+            summary: Some("In Development".to_string()),
+            body: "Full ticket description content here with figma links".to_string(),
+            provider: "jira".to_string(),
+            source_id: "INIT-358".to_string(),
+            source_url: "https://jira.example.com/browse/INIT-358".to_string(),
+            repository: Some("INIT".to_string()),
+            tags: vec!["project:INIT".to_string()],
+            relationships: vec![],
+            created_at: Some(chrono::Utc::now()),
+            updated_at: chrono::Utc::now(),
+            synced_at: chrono::Utc::now(),
+            checksum: "sum1".to_string(),
+            metadata: serde_json::json!({ "status": "In Development" }),
+        };
+        storage.upsert_artifact(&ticket)?;
+
+        // Test display_doc with raw = true
+        assert!(display_doc(&storage, "INIT-358", true, false).is_ok());
+
+        // Test display_doc with json = true
+        assert!(display_doc(&storage, "INIT-358", false, true).is_ok());
+
+        // Test display_doc normal formatted view
+        assert!(display_doc(&storage, "INIT-358", false, false).is_ok());
+
+        // Test non-existent artifact returns Ok(()) without panicking
+        assert!(display_doc(&storage, "NON-EXISTENT-999", false, false).is_ok());
+
+        Ok(())
+    }
+}
+
+

@@ -31,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const mainNav = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'connectors', label: 'Connectors', icon: Plug },
+    { id: 'mcp', label: 'MCP Hub', icon: Network },
     { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
     { id: 'sync', label: 'Sync Status', icon: RefreshCw },
     { id: 'settings', label: 'Settings', icon: Settings },

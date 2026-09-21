@@ -200,4 +200,51 @@ export interface SpreadsheetConfigPayload {
   max_rows_per_sheet?: number;
 }
 
+export interface McpServerInfo {
+  name: string;
+  command: string;
+  args: string[];
+  env_keys: string[];
+  enabled: boolean;
+  prefix?: string | null;
+  tools_count?: number | null;
+  status: string;
+}
 
+export interface McpServerPayload {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+  prefix?: string;
+}
+
+export interface McpToolSchema {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    type?: string;
+    properties?: Record<string, {
+      type?: string;
+      description?: string;
+      [key: string]: unknown;
+    }>;
+    required?: string[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface McpTestResult {
+  success: boolean;
+  tools?: McpToolSchema[];
+  message?: string;
+  error?: string;
+}
+
+export interface McpSnippetResponse {
+  claude_desktop: Record<string, unknown>;
+  cursor: Record<string, unknown>;
+  agy: Record<string, unknown>;
+}
