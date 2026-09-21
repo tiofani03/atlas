@@ -19,6 +19,10 @@ import {
   NotionConfigPayload,
   AsanaConfigPayload,
   SpreadsheetConfigPayload,
+  McpServerInfo,
+  McpServerPayload,
+  McpTestResult,
+  McpSnippetResponse,
 } from '../types';
 
 const API_BASE = '/api';
@@ -188,4 +192,27 @@ export const api = {
     fetchJson<{ success: boolean; path: string | null }>(`${API_BASE}/dialog/select-folder`, {
       method: 'POST',
     }),
+
+  getMcpServers: () => fetchJson<McpServerInfo[]>(`${API_BASE}/mcp/servers`),
+
+  saveMcpServer: (data: McpServerPayload) =>
+    fetchJson<{ success: boolean; name: string }>(`${API_BASE}/mcp/servers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  deleteMcpServer: (name: string) =>
+    fetchJson<{ success: boolean; name: string }>(`${API_BASE}/mcp/servers/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+
+  testMcpServer: (name: string, payload?: Partial<McpServerPayload>) =>
+    fetchJson<McpTestResult>(`${API_BASE}/mcp/servers/${encodeURIComponent(name)}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload ? JSON.stringify(payload) : undefined,
+    }),
+
+  getMcpSnippet: () => fetchJson<McpSnippetResponse>(`${API_BASE}/mcp/snippet`),
 };

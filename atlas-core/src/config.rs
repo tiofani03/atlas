@@ -137,12 +137,29 @@ impl ConnectorConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct McpServerConfig {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub prefix: Option<String>,
+    #[serde(default)]
+    pub aliases: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
     #[serde(default)]
     pub connectors: HashMap<String, ConnectorConfig>,
+    #[serde(default)]
+    pub mcp_servers: HashMap<String, McpServerConfig>,
 }
 
 impl Config {
@@ -206,3 +223,60 @@ mod shellexpand {
         path.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mcp_servers_config_serde() {
+        let toml_str = r#"
+            [mcp_servers.figma]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-figma"]
+            prefix = "figma"
+            enabled = true
+
+            [mcp_servers.figma.env]
+            FIGMA_PERSONAL_ACCESS_TOKEN = "figd_test123"
+        "#;
+        let config: Config = toml::from_str(toml_str).expect("parse config");
+        assert!(config.mcp_servers.contains_key("figma"));
+        let figma = &config.mcp_servers["figma"];
+        assert_eq!(figma.command, "npx");
+        assert_eq!(figma.prefix.as_deref(), Some("figma"));
+        assert_eq!(figma.env.get("FIGMA_PERSONAL_ACCESS_TOKEN").map(|s| s.as_str()), Some("figd_test123"));
+
+        let serialized = toml::to_string(&config).expect("serialize config");
+        let config_roundtrip: Config = toml::from_str(&serialized).expect("deserialize roundtrip");
+        assert_eq!(config_roundtrip.mcp_servers["figma"], *figma);
+    }
+
+    #[test]
+    fn test_mcp_server_aliases_serde() {
+        let toml_str = r#"
+            [mcp_servers.figma]
+            command = "npx"
+            args = ["-y", "mcp-figma"]
+
+            [mcp_servers.figma.aliases]
+            "INIT-358" = "wOeG8ZbAQwzyrtZbWpAmIB"
+            "ORIGINAL_KEY_123" = "wOeG8ZbAQwzyrtZbWpAmIB"
+        "#;
+        let config: Config = toml::from_str(toml_str).expect("parse config");
+        let figma = &config.mcp_servers["figma"];
+        assert_eq!(
+            figma.aliases.get("INIT-358").map(|s| s.as_str()),
+            Some("wOeG8ZbAQwzyrtZbWpAmIB")
+        );
+        assert_eq!(
+            figma.aliases.get("ORIGINAL_KEY_123").map(|s| s.as_str()),
+            Some("wOeG8ZbAQwzyrtZbWpAmIB")
+        );
+
+        let serialized = toml::to_string(&config).expect("serialize config");
+        let roundtrip: Config = toml::from_str(&serialized).expect("deserialize roundtrip");
+        assert_eq!(roundtrip.mcp_servers["figma"].aliases, figma.aliases);
+    }
+}
+

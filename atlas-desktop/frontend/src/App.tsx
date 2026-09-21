@@ -10,6 +10,7 @@ import { SettingsPage } from './features/settings/SettingsPage';
 import { AboutPage } from './features/about/AboutPage';
 import { ChatPage } from './features/chat/ChatPage';
 import { ArtifactViewerPage } from './features/viewer/ArtifactViewerPage';
+import { McpHubPage } from './features/mcp/McpHubPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,8 @@ export const App: React.FC = () => {
         return <DashboardPage />;
       case 'connectors':
         return <ConnectorsPage />;
+      case 'mcp':
+        return <McpHubPage />;
       case 'knowledge':
         return <ExplorerPage />;
       case 'sync':

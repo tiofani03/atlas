@@ -207,6 +207,34 @@ Atlas includes a native **Stdio MCP Server** allowing AI models to retrieve engi
 }
 ```
 
+### MCP Hub & Figma Clone Resolution
+
+Atlas can expose configured upstream MCP servers through one gateway:
+
+```bash
+# Register Figma MCP once
+atx mcp add figma --command npx --args "-y,mcp-figma" --prefix figma --env FIGMA_PERSONAL_ACCESS_TOKEN=$FIGMA_PERSONAL_ACCESS_TOKEN
+
+# Inspect, test, or start the aggregated gateway
+atx mcp list
+atx mcp test figma
+atx mcp
+```
+
+For a project-specific working clone, create `.atlas/figma.toml`:
+
+```toml
+[figma]
+file_key = "wOeG8ZbAQwzyrtZbWpAmIB"
+node_id = "6236-33268"
+
+# Optional ticket-to-clone overrides
+[aliases]
+"INIT-358" = "wOeG8ZbAQwzyrtZbWpAmIB"
+```
+
+Then `atx context INIT-358` and MCP `atx_context` include the resolved Figma design metadata. Figma file candidates already indexed by Atlas or cached by the Figma MCP are also considered when no explicit override exists.
+
 ---
 
 ## 🌐 REST API Reference
@@ -227,4 +255,3 @@ Atlas includes a native **Stdio MCP Server** allowing AI models to retrieve engi
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more details.
-
