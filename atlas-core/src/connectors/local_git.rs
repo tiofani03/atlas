@@ -31,9 +31,20 @@ pub struct LocalGitRepository {
 }
 
 impl LocalGitRepository {
+    /// Expand tilde (~) prefix to user home directory
+    pub fn expand_path(p: &Path) -> PathBuf {
+        let s = p.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix("~/") {
+            if let Some(home) = std::env::var_os("HOME") {
+                return PathBuf::from(home).join(stripped);
+            }
+        }
+        p.to_path_buf()
+    }
+
     /// Inspect a local path and extract canonical repository metadata
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let raw_path = path.as_ref();
+        let raw_path = Self::expand_path(path.as_ref());
         let canonical_path = raw_path
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize repository path: {:?}", raw_path))?;
@@ -204,7 +215,7 @@ impl RepositoryRegistry {
 
     /// Scan a workspace directory (depth = 1) and auto-register valid Git repositories
     pub fn scan_workspace(&mut self, workspace_path: impl AsRef<Path>) -> Result<Vec<String>> {
-        let raw_path = workspace_path.as_ref();
+        let raw_path = LocalGitRepository::expand_path(workspace_path.as_ref());
         let canonical_path = raw_path.canonicalize()?;
 
         let mut added_ids = Vec::new();
@@ -511,6 +522,10 @@ impl Connector for LocalGitConnector {
 
     async fn fetch_modified(&self, since: Option<DateTime<Utc>>) -> Result<Vec<KnowledgeArtifact>> {
         let mut artifacts = Vec::new();
+
+        if self.registry.repositories.is_empty() {
+            warn!("LocalGitConnector [{}]: No valid git repositories registered. Please check that configured path(s) exist and contain a .git directory.", self.id);
+        }
 
         for repo in &self.registry.repositories {
             // 1. Fetch Commit History Graph artifacts

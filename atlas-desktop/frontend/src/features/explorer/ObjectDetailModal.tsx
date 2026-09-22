@@ -1,13 +1,14 @@
 import React from 'react';
-import { X, ExternalLink, Tag, Link2, FileCode, Layers } from 'lucide-react';
+import { X, ExternalLink, Tag, Link2, FileCode, Layers, Network } from 'lucide-react';
 import { KnowledgeObject } from '../../types';
 
 interface ModalProps {
   object: KnowledgeObject | null;
   onClose: () => void;
+  onViewInGraph?: (id: string) => void;
 }
 
-export const ObjectDetailModal: React.FC<ModalProps> = ({ object, onClose }) => {
+export const ObjectDetailModal: React.FC<ModalProps> = ({ object, onClose, onViewInGraph }) => {
   if (!object) return null;
 
   const kind = object.kind || object.object_type || 'artifact';
@@ -48,15 +49,29 @@ export const ObjectDetailModal: React.FC<ModalProps> = ({ object, onClose }) => 
               <span className="text-slate-500 dark:text-zinc-500 text-[11px]">Original Reference</span>
               <p className="font-mono text-slate-900 dark:text-zinc-200 font-semibold">{sourceId}</p>
             </div>
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-1.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-600/20 dark:hover:bg-indigo-600/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 font-medium transition flex items-center gap-1.5"
-            >
-              <span>Open Source URL</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            <div className="flex items-center gap-2">
+              {onViewInGraph && (
+                <button
+                  onClick={() => {
+                    onViewInGraph(object.id);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-1.5 shadow-2xs text-xs"
+                >
+                  <Network className="w-3.5 h-3.5" />
+                  <span>View Graph</span>
+                </button>
+              )}
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-600/20 dark:hover:bg-indigo-600/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 font-medium transition flex items-center gap-1.5"
+              >
+                <span>Open Source</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
           {/* Tags */}

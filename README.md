@@ -107,12 +107,44 @@ cargo build --release
 
 ---
 
+## 🌐 Launching the Web UI & Interactive Graph
+
+Atlas comes with a fully embedded, zero-dependency Web Application featuring an **Interactive Graph Visualizer**, **Knowledge Explorer**, **Live Connector Settings**, and **MCP Hub**.
+
+```bash
+# Launch the Web UI and automatically open your default browser
+atx ui
+
+# Or use the shortcut alias
+atx web
+
+# Specify a custom port or run headless (no browser auto-open)
+atx ui --port 8080
+atx ui --no-open
+```
+
+The Web UI runs on **`http://localhost:31415`** by default.
+
+### 🌟 Key Web UI Features:
+- 🕸️ **Interactive Graph Visualizer**: Visualize relationships across PRs, Commits, Jira Tickets, and Figma Specs with Dagre auto-layout, depth expansion, and metadata drawer.
+- 📑 **Knowledge Explorer**: Seamlessly switch between `Table` and `Graph` views to filter, search, and inspect engineering artifacts.
+- 🔌 **Live Connector Management**: Configure and validate 14+ connectors (GitHub, Jira, Confluence, Local Git, Notion, OpenAPI, etc.) with real-time path/credential checks.
+- 🤖 **MCP Hub Visualizer**: Configure, monitor, and test upstream Model Context Protocol tools.
+
+---
+
 ## 💻 CLI Usage (`atx`)
+
+### Launch Web UI
+```bash
+atx ui            # Open Web UI in browser
+atx web           # Alias for 'atx ui'
+```
 
 ### Initialize Atlas Context Engine
 Create local configuration (`~/.config/atlas/config.toml`) and database storage:
 ```bash
-cargo run --bin atx -- init
+atx init
 ```
 
 ### Configure Connectors
@@ -121,90 +153,123 @@ All connectors can be configured using `atx config <provider>`:
 
 ```bash
 # Configure GitHub
-cargo run --bin atx -- config github github-main --token-env GITHUB_TOKEN --repos "owner/repo1,owner/repo2"
-
-# Configure GitLab
-cargo run --bin atx -- config gitlab gitlab-main --url https://gitlab.com --token-env GITLAB_TOKEN --repos "owner/repo"
-
-# Configure ClickUp
-cargo run --bin atx -- config clickup clickup-main --token-env CLICKUP_TOKEN --workspace "123456"
-
-# Configure Linear
-cargo run --bin atx -- config linear linear-main --token-env LINEAR_API_KEY
-
-# Configure Notion
-cargo run --bin atx -- config notion notion-main --token-env NOTION_TOKEN
-
-# Configure Swagger / OpenAPI (JSON or YAML)
-cargo run --bin atx -- config openapi api-spec --path ./openapi.yaml
-
-# Configure Markdown Documentation
-cargo run --bin atx -- config markdown local-docs --path ./docs
+atx config github github-main --token-env GITHUB_TOKEN --repos "owner/repo1,owner/repo2"
 
 # Configure Local Git Repository
-cargo run --bin atx -- config local-git atlas-repo --path .
+atx config local-git my-repo --path /path/to/repo
 
 # Configure Jira & Confluence
-cargo run --bin atx -- config jira jira-main --url https://company.atlassian.net --email user@example.com --token-env JIRA_API_TOKEN --projects "PAY,DEV"
-cargo run --bin atx -- config confluence conf-main --url https://company.atlassian.net --email user@example.com --token-env CONFLUENCE_API_TOKEN --spaces "ENG,ARCH"
+atx config jira jira-main --url https://company.atlassian.net --email user@example.com --token-env JIRA_API_TOKEN --projects "PAY,DEV"
+atx config confluence conf-main --url https://company.atlassian.net --email user@example.com --token-env CONFLUENCE_API_TOKEN --spaces "ENG,ARCH"
+
+# Configure GitLab
+atx config gitlab gitlab-main --url https://gitlab.com --token-env GITLAB_TOKEN --repos "owner/repo"
+
+# Configure ClickUp, Linear, Notion
+atx config clickup clickup-main --token-env CLICKUP_TOKEN --workspace "123456"
+atx config linear linear-main --token-env LINEAR_API_KEY
+atx config notion notion-main --token-env NOTION_TOKEN
+
+# Configure Swagger / OpenAPI & Local Markdown Documentation
+atx config openapi api-spec --path ./openapi.yaml
+atx config markdown local-docs --path ./docs
 ```
 
 ### Verify Connectors & Check Health
 
 ```bash
 # Test live connectivity for a connector
-cargo run --bin atx -- connector verify github-main
+atx connector verify github-main
+atx connector verify my-repo
 
 # View connector health monitoring report & P95 latency
-cargo run --bin atx -- connector doctor
+atx connector doctor
+
+# Comprehensive system diagnostic (SQLite WAL, integrity, disk size)
+atx doctor
 ```
 
 ### Synchronize Knowledge
 
 ```bash
 # Sync all connectors
-cargo run --bin atx -- sync
+atx sync
 
 # Sync a specific connector
-cargo run --bin atx -- sync --connector github-main
+atx sync --connector github-main
 
-# Force a full resync
-cargo run --bin atx -- sync --full
+# Force a full resync ignoring watermarks
+atx sync --full
 ```
 
 ### Query Context Graph & Search
 
 **Search Context Graph:**
 ```bash
-# Full-text search
-cargo run --bin atx -- search "payment API"
+# Full-text BM25 search
+atx search "payment API"
 
 # Filter by artifact kind, tag, or repository
-cargo run --bin atx -- search --kind pull_request --repo "owner/repo"
+atx search --kind pull_request --repo "owner/repo"
 
 # Output as JSON
-cargo run --bin atx -- search "auth" --json
+atx search "auth" --json
 ```
 
 **Inspect Artifact Details:**
 ```bash
-cargo run --bin atx -- artifact owner/repo#42
+atx artifact owner/repo#42
+atx artifact PROJ-123
 ```
 
 **Traverse Related Artifact Graph:**
 ```bash
-cargo run --bin atx -- related owner/repo#42
+atx related owner/repo#42
 ```
 
-**List Repository Artifacts:**
+**AI Execution Briefing (`atx context`):**
 ```bash
-cargo run --bin atx -- repository owner/repo
+# Build token-optimized AI context briefing with 2-hop graph
+atx context PROJ-123 --depth 2
+
+# Include Figma design tokens and layout context
+atx context PROJ-123 --figma "https://www.figma.com/file/sample-figma-key"
+
+# Profile retrieval latency breakdown across stages
+atx context PROJ-123 --profile
+```
+
+**Deep-Dive Graph Lineage Explanation (`atx explain`):**
+```bash
+# Explain relationships and commit ancestry for an artifact
+atx explain owner/repo#42 --all
+
+# Focus on a specific subsystem
+atx explain owner/repo#42 --subsystem atlas-core
+```
+
+**Browse & Read Indexed Documentation (`atx docs`, `atx doc`, `atx cat`):**
+```bash
+# List all indexed documentation (Markdown, Confluence, Notion, ADRs)
+atx docs
+
+# Filter documents by keyword
+atx docs --query "architecture"
+
+# View document content formatted in terminal
+atx doc "Architecture Overview"
+
+# Stream raw document markdown (piping to glow or bat)
+atx doc "Architecture Overview" --raw | glow
+
+# Print full content of any artifact (ticket, PR, or doc)
+atx cat PROJ-123
 ```
 
 ### Storage & Graph Status
-Check context graph statistics:
+Check context graph statistics and database size:
 ```bash
-cargo run --bin atx -- status
+atx status
 ```
 
 ---
@@ -249,15 +314,15 @@ For a project-specific working clone, create `.atlas/figma.toml`:
 
 ```toml
 [figma]
-file_key = "wOeG8ZbAQwzyrtZbWpAmIB"
-node_id = "6236-33268"
+file_key = "sample_figma_file_key"
+node_id = "1:2"
 
 # Optional ticket-to-clone overrides
 [aliases]
-"INIT-358" = "wOeG8ZbAQwzyrtZbWpAmIB"
+"PROJ-123" = "sample_figma_file_key"
 ```
 
-Then `atx context INIT-358` and MCP `atx_context` include the resolved Figma design metadata. Figma file candidates already indexed by Atlas or cached by the Figma MCP are also considered when no explicit override exists.
+Then `atx context PROJ-123` and MCP `atx_context` include the resolved Figma design metadata. Figma file candidates already indexed by Atlas or cached by the Figma MCP are also considered when no explicit override exists.
 
 ---
 
@@ -270,9 +335,13 @@ Then `atx context INIT-358` and MCP `atx_context` include the resolved Figma des
 | `POST` | `/api/connectors/github` | Save or update GitHub connector configuration |
 | `POST` | `/api/connectors/jira` | Save or update Jira connector configuration |
 | `POST` | `/api/connectors/confluence` | Save or update Confluence connector configuration |
+| `POST` | `/api/connectors/local_git` | Save or update Local Git repository connector configuration |
+| `POST` | `/api/connectors/validate` | Real-time live verification of connector paths or credentials |
 | `POST` | `/api/sync` | Trigger background sync engine |
 | `GET` | `/api/search` | Search indexed artifacts with query params (`query`, `kind`, `tag`, `repository`) |
 | `GET` | `/api/objects/:id` | Get details for a specific canonical artifact |
+| `GET` | `/api/graph/:id` | Fetch subgraph topology around an artifact (`?depth=1|2&limit=150`) |
+| `GET` | `/api/graph/recent` | List recently indexed seed artifacts for graph exploration |
 
 ---
 

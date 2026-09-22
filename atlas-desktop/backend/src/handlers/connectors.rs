@@ -158,12 +158,23 @@ pub struct SpreadsheetConfigPayload {
     pub max_rows_per_sheet: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct ValidatePayload {
     pub provider: String,
-    pub instance_url: String,
-    pub email: String,
-    pub api_token: String,
+    #[serde(default)]
+    pub instance_url: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub api_token: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub projects: Option<Vec<String>>,
+    #[serde(default)]
+    pub repos: Option<Vec<String>>,
 }
 
 pub async fn list_connectors(State(state): State<AppState>) -> impl IntoResponse {
@@ -772,40 +783,34 @@ pub async fn validate_credentials(
 ) -> impl IntoResponse {
     let test_cfg = ConnectorConfig {
         provider: payload.provider.clone(),
-        instance_url: payload.instance_url,
-        email: payload.email,
-        api_token: Some(payload.api_token),
+        instance_url: payload.instance_url.unwrap_or_default(),
+        email: payload.email.unwrap_or_default(),
+        api_token: payload.api_token,
         api_token_env: None,
-        projects: Vec::new(),
+        projects: payload.projects.unwrap_or_default(),
         spaces: Vec::new(),
-        repos: Vec::new(),
-        path: None,
-        paths: Vec::new(),
+        repos: payload.repos.unwrap_or_default(),
+        path: payload.path,
+        paths: payload.paths.unwrap_or_default(),
         glob_patterns: Vec::new(),
         ..Default::default()
     };
 
-    let result = match payload.provider.as_str() {
-        "jira" => atlas_core::JiraConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "confluence" => atlas_core::ConfluenceConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "github" => atlas_core::GithubConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "clickup" => atlas_core::ClickupConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "linear" => atlas_core::LinearConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "asana" => atlas_core::AsanaConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "azure_devops" => atlas_core::AzureDevopsConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "gitlab" => atlas_core::GitlabConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "bitbucket" => atlas_core::BitbucketConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "openapi" => atlas_core::OpenapiConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "figma" => atlas_core::FigmaConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "notion" => atlas_core::NotionConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        "spreadsheet" => atlas_core::SpreadsheetConnector::new("test".to_string(), test_cfg).map(|_| ()),
-        _ => Err(anyhow::anyhow!("Unsupported provider")),
+    let instance = match atlas_core::ConnectorInstance::build("test-validate", &test_cfg) {
+        Ok(i) => i,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "valid": false, "message": e.to_string() })),
+            );
+        }
     };
 
-    match result {
-        Ok(_) => (
+    use atlas_core::connectors::Connector;
+    match instance.verify().await {
+        Ok(msg) => (
             StatusCode::OK,
-            Json(serde_json::json!({ "valid": true, "message": "Credentials structure is valid." })),
+            Json(serde_json::json!({ "valid": true, "message": msg })),
         ),
         Err(err) => (
             StatusCode::BAD_REQUEST,
@@ -945,6 +950,38 @@ pub async fn select_folder() -> impl IntoResponse {
             }
         }
 
+        #[cfg(target_os = "linux")]
+        {
+            let zenity_output = std::process::Command::new("zenity")
+                .arg("--file-selection")
+                .arg("--directory")
+                .arg("--title=Select Git Repository or Directory")
+                .output();
+
+            if let Ok(out) = zenity_output {
+                if out.status.success() {
+                    let res = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !res.is_empty() {
+                        return Some(res);
+                    }
+                }
+            }
+
+            let kdialog_output = std::process::Command::new("kdialog")
+                .arg("--getexistingdirectory")
+                .arg(".")
+                .output();
+
+            if let Ok(out) = kdialog_output {
+                if out.status.success() {
+                    let res = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !res.is_empty() {
+                        return Some(res);
+                    }
+                }
+            }
+        }
+
         None
     })
     .await
@@ -1011,4 +1048,31 @@ pub async fn delete_connector(
             "cleared_artifacts": cleared_count
         })),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_validate_credentials_local_git_valid() {
+        let payload = ValidatePayload {
+            provider: "local_git".to_string(),
+            paths: Some(vec!["../../".to_string()]),
+            ..Default::default()
+        };
+        let response = validate_credentials(Json(payload)).await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_validate_credentials_local_git_invalid() {
+        let payload = ValidatePayload {
+            provider: "local_git".to_string(),
+            paths: Some(vec!["/nonexistent/directory/path/here".to_string()]),
+            ..Default::default()
+        };
+        let response = validate_credentials(Json(payload)).await.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }

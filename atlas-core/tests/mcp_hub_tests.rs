@@ -374,12 +374,12 @@ async fn test_mcp_hub_figma_transparent_rewriting() {
                 "file:INDEXED_CLONE_KEY",
             ),
             kind: ArtifactKind::Design,
-            title: "[INIT 359] - Refund Partial Alfagift (Copy)".to_string(),
+            title: "[PROJ 124] - Checkout Flow Redesign (Copy)".to_string(),
             summary: None,
-            body: "Working Figma clone for INIT-359".to_string(),
+            body: "Working Figma clone for PROJ-124".to_string(),
             provider: "figma".to_string(),
             source_id: "file:INDEXED_CLONE_KEY".to_string(),
-            source_url: "https://www.figma.com/design/INDEXED_CLONE_KEY/Refund".to_string(),
+            source_url: "https://www.figma.com/design/INDEXED_CLONE_KEY/Checkout".to_string(),
             repository: None,
             tags: vec!["figma:file".to_string()],
             relationships: Vec::new(),
@@ -392,7 +392,7 @@ async fn test_mcp_hub_figma_transparent_rewriting() {
         .expect("index Figma candidate");
 
     let mut aliases = HashMap::new();
-    aliases.insert("INIT-358".to_string(), "wOeG8ZbAQwzyrtZbWpAmIB".to_string());
+    aliases.insert("PROJ-123".to_string(), "wOeG8ZbAQwzyrtZbWpAmIB".to_string());
     aliases.insert("CANONICAL_SHARED".to_string(), "PERSONAL_CLONE_KEY".to_string());
 
     let mut config = Config::default();
@@ -412,11 +412,11 @@ async fn test_mcp_hub_figma_transparent_rewriting() {
         .await
         .expect("from_config");
 
-    // 1. Test ticket alias rewriting: "INIT-358" -> "wOeG8ZbAQwzyrtZbWpAmIB"
+    // 1. Test ticket alias rewriting: "PROJ-123" -> "wOeG8ZbAQwzyrtZbWpAmIB"
     let res1 = hub
         .route_tool_call(
             "figma__get_file_nodes",
-            json!({"fileKey": "INIT-358", "node_id": "1:2"}),
+            json!({"fileKey": "PROJ-123", "node_id": "1:2"}),
         )
         .await
         .expect("route ticket call");
@@ -426,7 +426,7 @@ async fn test_mcp_hub_figma_transparent_rewriting() {
     assert_eq!(args1["node_id"], "1:2");
 
     // 2. Test full URL sanitization + alias rewriting + node-id extraction
-    let url = "https://www.figma.com/design/CANONICAL_SHARED/-Refund-Partial-?node-id=6236-33268&m=dev";
+    let url = "https://www.figma.com/design/CANONICAL_SHARED/-Checkout-Flow-?node-id=6236-33268&m=dev";
     let res2 = hub
         .route_tool_call("figma__get_file_nodes", json!({"fileKey": url}))
         .await
@@ -448,7 +448,7 @@ async fn test_mcp_hub_figma_transparent_rewriting() {
 
     // 4. Gateway auto-detects a ticket from indexed Figma metadata.
     let res4 = hub
-        .route_tool_call("figma__get_file", json!({"fileKey": "INIT-359"}))
+        .route_tool_call("figma__get_file", json!({"fileKey": "PROJ-124"}))
         .await
         .expect("route indexed ticket call");
     let args4: serde_json::Value =
@@ -462,12 +462,12 @@ async fn test_native_context_includes_resolved_figma_design() {
     let storage = Storage::new(tmp_file.path()).expect("init storage");
 
     let mut aliases = HashMap::new();
-    aliases.insert("INIT-358".to_string(), "wOeG8ZbAQwzyrtZbWpAmIB:6236:33268".to_string());
+    aliases.insert("PROJ-123".to_string(), "wOeG8ZbAQwzyrtZbWpAmIB:6236:33268".to_string());
 
     let result = handle_native_tool_with_figma_context(
         &storage,
         "atx_context",
-        json!({"id": "INIT-358", "kind": "issue"}),
+        json!({"id": "PROJ-123", "kind": "issue"}),
         &aliases,
     )
     .await

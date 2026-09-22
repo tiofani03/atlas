@@ -133,7 +133,7 @@ fn normalize_node_id(node: &str) -> String {
 /// node_id = "6236-33268"
 ///
 /// [aliases]
-/// "INIT-358" = "clone-key"
+/// "PROJ-123" = "clone-key"
 /// ```
 ///
 /// The aliases table remains supported for backwards compatibility.
@@ -193,7 +193,7 @@ pub fn default_figma_cache_dir() -> Option<PathBuf> {
         .map(|h| h.join(".mcp-figma").join("cache"))
 }
 
-/// Scan `cache_dir` for a cached Figma file corresponding to `ticket_code` (e.g. `INIT-358` or `INIT 358`).
+/// Scan `cache_dir` for a cached Figma file corresponding to `ticket_code` (e.g. `PROJ-123` or `PROJ 123`).
 pub fn find_cached_figma_file_for_ticket_in_dir(ticket_code: &str, cache_dir: &Path) -> Option<String> {
     if !cache_dir.exists() || !cache_dir.is_dir() {
         return None;
@@ -205,7 +205,7 @@ pub fn find_cached_figma_file_for_ticket_in_dir(ticket_code: &str, cache_dir: &P
         return None;
     }
 
-    // Split words, e.g. "INIT-358" -> ["INIT", "358"]
+    // Split words, e.g. "PROJ-123" -> ["PROJ", "123"]
     let parts = ticket_parts(cleaned_ticket);
 
     if parts.is_empty() {
@@ -393,7 +393,7 @@ pub fn resolve_figma_target_with_candidates(
         return (candidate_key, node_id.or(candidate_node));
     }
 
-    // Cache auto-detection (e.g. user passes ticket ID "INIT-358" or "[INIT 358]")
+    // Cache auto-detection (e.g. user passes ticket ID "PROJ-123" or "[PROJ 123]")
     let cache_dir = override_cache_dir
         .map(PathBuf::from)
         .or_else(default_figma_cache_dir);

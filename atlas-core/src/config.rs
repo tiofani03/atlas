@@ -260,13 +260,13 @@ mod tests {
             args = ["-y", "mcp-figma"]
 
             [mcp_servers.figma.aliases]
-            "INIT-358" = "wOeG8ZbAQwzyrtZbWpAmIB"
+            "PROJ-123" = "wOeG8ZbAQwzyrtZbWpAmIB"
             "ORIGINAL_KEY_123" = "wOeG8ZbAQwzyrtZbWpAmIB"
         "#;
         let config: Config = toml::from_str(toml_str).expect("parse config");
         let figma = &config.mcp_servers["figma"];
         assert_eq!(
-            figma.aliases.get("INIT-358").map(|s| s.as_str()),
+            figma.aliases.get("PROJ-123").map(|s| s.as_str()),
             Some("wOeG8ZbAQwzyrtZbWpAmIB")
         );
         assert_eq!(
