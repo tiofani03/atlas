@@ -428,3 +428,102 @@ fn test_exact_pr_number_resolution_and_no_substring_matches() -> anyhow::Result<
 
     Ok(())
 }
+
+#[test]
+fn test_concurrent_reads_during_batch_write() -> anyhow::Result<()> {
+    use std::sync::Arc;
+    use std::thread;
+
+    let tmp_file = NamedTempFile::new()?;
+    let storage = Arc::new(Storage::new(tmp_file.path())?);
+
+    // Pre-populate with initial data
+    let now = Utc::now();
+    for i in 0..20 {
+        let art = KnowledgeArtifact {
+            id: KnowledgeArtifact::generate_id("github", "https://api.github.com", &format!("repo#{}", i)),
+            kind: ArtifactKind::Issue,
+            title: format!("Issue #{} for concurrency testing", i),
+            summary: Some("Concurrency test issue".to_string()),
+            body: format!("Body of issue {} with search keywords", i),
+            provider: "github".to_string(),
+            source_id: format!("repo#{}", i),
+            source_url: format!("https://github.com/org/repo/issues/{}", i),
+            repository: Some("org/repo".to_string()),
+            tags: vec!["concurrency".to_string()],
+            relationships: Vec::new(),
+            created_at: Some(now),
+            updated_at: now,
+            synced_at: now,
+            checksum: format!("cs_initial_{}", i),
+            metadata: serde_json::Value::Null,
+        };
+        storage.upsert_artifact(&art)?;
+    }
+
+    let mut handles = Vec::new();
+
+    // Spawn 4 concurrent reader threads
+    for reader_id in 0..4 {
+        let storage_clone = Arc::clone(&storage);
+        handles.push(thread::spawn(move || -> anyhow::Result<()> {
+            for iter in 0..30 {
+                // Alternating reads: search, get_stats, get_artifact_by_id
+                let stats = storage_clone.get_stats()?;
+                assert!(stats.total_artifacts >= 20);
+
+                let results = storage_clone.search_fts("concurrency", None, None, None, 10)?;
+                assert!(!results.is_empty());
+
+                let target_id = format!("repo#{}", (reader_id * 10 + iter) % 20);
+                let _ = storage_clone.get_artifact_by_id(&target_id)?;
+                thread::yield_now();
+            }
+            Ok(())
+        }));
+    }
+
+    // Spawn 1 writer thread doing batch upserts
+    let writer_storage = Arc::clone(&storage);
+    let writer_handle = thread::spawn(move || -> anyhow::Result<()> {
+        for batch_num in 0..5 {
+            let mut batch = Vec::new();
+            for item in 0..10 {
+                let id_num = 100 + batch_num * 10 + item;
+                batch.push(KnowledgeArtifact {
+                    id: KnowledgeArtifact::generate_id("github", "https://api.github.com", &format!("repo#{}", id_num)),
+                    kind: ArtifactKind::Commit,
+                    title: format!("Concurrent Commit {}", id_num),
+                    summary: None,
+                    body: format!("Commit body content for {}", id_num),
+                    provider: "github".to_string(),
+                    source_id: format!("repo#{}", id_num),
+                    source_url: format!("https://github.com/org/repo/commit/{}", id_num),
+                    repository: Some("org/repo".to_string()),
+                    tags: vec!["concurrency".to_string()],
+                    relationships: Vec::new(),
+                    created_at: Some(Utc::now()),
+                    updated_at: Utc::now(),
+                    synced_at: Utc::now(),
+                    checksum: format!("cs_batch_{}", id_num),
+                    metadata: serde_json::Value::Null,
+                });
+            }
+            writer_storage.upsert_artifacts_batch(&batch)?;
+            thread::yield_now();
+        }
+        Ok(())
+    });
+
+    // Wait for writer and readers
+    writer_handle.join().unwrap()?;
+    for h in handles {
+        h.join().unwrap()?;
+    }
+
+    let final_stats = storage.get_stats()?;
+    assert_eq!(final_stats.total_artifacts, 70); // 20 initial + 50 from writer
+
+    Ok(())
+}
+
