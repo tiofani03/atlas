@@ -11,11 +11,22 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 31420,
+    strictPort: false,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:31415',
         changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'xyflow-vendor': ['@xyflow/react', '@dagrejs/dagre'],
+        },
       },
     },
   },

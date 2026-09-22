@@ -248,3 +248,30 @@ export interface McpSnippetResponse {
   cursor: Record<string, unknown>;
   agy: Record<string, unknown>;
 }
+
+export interface GraphNodeData extends Record<string, unknown> {
+  id: string;
+  source_id: string;
+  kind: string;
+  title: string;
+  provider: string;
+  source_url?: string;
+  repository?: string | null;
+  summary?: string | null;
+  tags?: string[];
+  is_root?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GraphEdgeData {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface GraphResponse {
+  root_id: string;
+  nodes: GraphNodeData[];
+  edges: GraphEdgeData[];
+}

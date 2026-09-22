@@ -9,6 +9,10 @@ description = "Lightweight Axum REST server for Atlas Desktop"
 name = "atlas-desktop-backend"
 path = "src/main.rs"
 
+[lib]
+name = "atlas_desktop_backend"
+path = "src/lib.rs"
+
 [dependencies]
 atlas-core = { path = "../../atlas-core" }
 axum = "0.7"
@@ -20,3 +24,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+rust-embed = { version = "8.5", features = ["interpolate-folder-path"] }
+mime_guess = "2.0"
+
+[dev-dependencies]
+tempfile = "3.8"

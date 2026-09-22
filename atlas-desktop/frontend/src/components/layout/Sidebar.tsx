@@ -17,9 +17,8 @@ interface SidebarProps {
   onTabChange: (tab: string) => void;
   featureFlags: {
     aiChat: boolean;
-    artifactViewer: boolean;
   };
-  onToggleFeature: (feature: 'aiChat' | 'artifactViewer') => void;
+  onToggleFeature: (feature: 'aiChat') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -102,30 +101,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }`}
             >
               {featureFlags.aiChat ? 'ON' : 'OFF'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
-              onToggleFeature('artifactViewer');
-              if (!featureFlags.artifactViewer) onTabChange('viewer');
-            }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition ${
-              featureFlags.artifactViewer && currentTab === 'viewer'
-                ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40'
-                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-900'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <Network className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Artifacts</span>
-            </div>
-            <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
-                featureFlags.artifactViewer ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300' : 'bg-slate-200 dark:bg-zinc-800 text-slate-500 dark:text-zinc-500'
-              }`}
-            >
-              {featureFlags.artifactViewer ? 'ON' : 'OFF'}
             </span>
           </button>
         </div>

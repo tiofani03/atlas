@@ -13,15 +13,34 @@ import {
   ChevronsRight,
   Filter,
   FileText,
+  Table2,
+  Network,
+  Loader2,
 } from 'lucide-react';
 
-export const ExplorerPage: React.FC = () => {
+const ArtifactViewerPage = React.lazy(() =>
+  import('../viewer/ArtifactViewerPage').then((m) => ({ default: m.ArtifactViewerPage }))
+);
+
+interface ExplorerPageProps {
+  initialViewMode?: 'table' | 'graph';
+}
+
+export const ExplorerPage: React.FC<ExplorerPageProps> = ({ initialViewMode = 'table' }) => {
+  const [viewMode, setViewMode] = useState<'table' | 'graph'>(initialViewMode);
+  const [graphRootId, setGraphRootId] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(20);
   const [selectedObject, setSelectedObject] = useState<KnowledgeObject | null>(null);
+
+  const handleViewInGraph = (id: string) => {
+    setGraphRootId(id);
+    setViewMode('graph');
+  };
 
   // Fetch active connectors to populate provider options dynamically
   const { data: connectors } = useQuery({
@@ -84,17 +103,67 @@ export const ExplorerPage: React.FC = () => {
             <span>Knowledge Explorer</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-            Full-text search & structured indexing across local Markdown docs, Jira, Confluence, and GitHub.
+            {viewMode === 'graph'
+              ? 'Interactive relationship graph and lineage visualization across engineering artifacts.'
+              : 'Full-text search & structured indexing across local Markdown docs, Jira, Confluence, and GitHub.'}
           </p>
         </div>
 
-        <span className="text-xs px-2.5 py-1 rounded bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 font-mono self-start sm:self-auto font-medium">
-          Read-Only Mode
-        </span>
+        <div className="flex items-center gap-2.5">
+          {/* View Mode Toggle Switcher */}
+          <div className="flex items-center p-1 bg-slate-100 dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-2xs">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                viewMode === 'table'
+                  ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-2xs font-semibold'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Table2 className="w-3.5 h-3.5" />
+              <span>Table</span>
+            </button>
+            <button
+              onClick={() => setViewMode('graph')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                viewMode === 'graph'
+                  ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-2xs font-semibold'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Network className="w-3.5 h-3.5" />
+              <span>Graph</span>
+            </button>
+          </div>
+
+          <span className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 font-mono self-start sm:self-auto font-medium hidden md:inline-block">
+            Read-Only
+          </span>
+        </div>
       </div>
 
-      {/* Search & Filter Toolbar */}
-      <div className="glass-panel p-4 rounded-xl border border-slate-200 dark:border-zinc-800 flex flex-col md:flex-row gap-3 shadow-xs">
+      {viewMode === 'graph' ? (
+        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm h-[calc(100vh-12rem)]">
+          <React.Suspense
+            fallback={
+              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-zinc-950 gap-2.5">
+                <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+                <span className="text-xs font-mono text-slate-500 dark:text-zinc-400">
+                  Loading Graph Engine...
+                </span>
+              </div>
+            }
+          >
+            <ArtifactViewerPage
+              initialRootId={graphRootId}
+              onBackToTable={() => setViewMode('table')}
+            />
+          </React.Suspense>
+        </div>
+      ) : (
+        <>
+          {/* Search & Filter Toolbar */}
+          <div className="glass-panel p-4 rounded-xl border border-slate-200 dark:border-zinc-800 flex flex-col md:flex-row gap-3 shadow-xs">
         {/* Search Box */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 dark:text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -252,15 +321,25 @@ export const ExplorerPage: React.FC = () => {
                         {new Date(obj.updated_at).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-3 text-right shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <a
-                          href={sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-slate-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-300 font-medium"
-                        >
-                          <span>Open</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            onClick={() => handleViewInGraph(obj.id)}
+                            className="inline-flex items-center gap-1 text-slate-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-300 font-medium px-2 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+                            title="View relationship graph"
+                          >
+                            <Network className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Graph</span>
+                          </button>
+                          <a
+                            href={sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-slate-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-300 font-medium"
+                          >
+                            <span>Open</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -338,10 +417,16 @@ export const ExplorerPage: React.FC = () => {
           </div>
         </div>
       </div>
+    </>
+  )}
 
-      {selectedObject && (
-        <ObjectDetailModal object={selectedObject} onClose={() => setSelectedObject(null)} />
-      )}
-    </div>
+  {selectedObject && (
+    <ObjectDetailModal
+      object={selectedObject}
+      onClose={() => setSelectedObject(null)}
+      onViewInGraph={handleViewInGraph}
+    />
+  )}
+</div>
   );
 };

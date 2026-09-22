@@ -23,6 +23,8 @@ import {
   McpServerPayload,
   McpTestResult,
   McpSnippetResponse,
+  GraphNodeData,
+  GraphResponse,
 } from '../types';
 
 const API_BASE = '/api';
@@ -147,7 +149,16 @@ export const api = {
     }),
 
     
-  validateCredentials: (data: { provider: string; instance_url: string; email: string; api_token: string }) =>
+  validateCredentials: (data: {
+    provider: string;
+    instance_url?: string;
+    email?: string;
+    api_token?: string;
+    path?: string;
+    paths?: string[];
+    projects?: string[];
+    repos?: string[];
+  }) =>
     fetchJson<{ valid: boolean; message: string }>(`${API_BASE}/connectors/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -215,4 +226,10 @@ export const api = {
     }),
 
   getMcpSnippet: () => fetchJson<McpSnippetResponse>(`${API_BASE}/mcp/snippet`),
+  
+  getGraph: (id: string, depth = 1) =>
+    fetchJson<GraphResponse>(`${API_BASE}/graph/${encodeURIComponent(id)}?depth=${depth}`),
+
+  getRecentGraphSeeds: () =>
+    fetchJson<GraphNodeData[]>(`${API_BASE}/graph/recent`),
 };

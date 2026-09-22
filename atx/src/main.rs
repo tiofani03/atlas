@@ -234,7 +234,7 @@ enum Commands {
 
     /// Print full content of any artifact (ticket, document, PR, issue) to terminal
     Cat {
-        /// Artifact ID, key, title, path, or alias (e.g. INIT-358, vision.md, PR#42)
+        /// Artifact ID, key, title, path, or alias (e.g. PROJ-123, vision.md, PR#42)
         target: String,
 
         /// Output raw body only without headers (ideal for piping to glow or pager)
@@ -301,6 +301,18 @@ enum Commands {
 
     /// Run system and connector diagnostics (Doctor mode)
     Doctor,
+
+    /// Launch the Atlas Web UI and Knowledge Explorer in your browser
+    #[command(alias = "web")]
+    Ui {
+        /// Custom port to run the web server on
+        #[arg(short, long, default_value_t = 31415)]
+        port: u16,
+
+        /// Do not automatically open the browser
+        #[arg(long)]
+        no_open: bool,
+    },
 }
  
 #[derive(Subcommand, Debug, Clone, PartialEq)]
@@ -349,15 +361,15 @@ enum McpSubcommands {
         name: String,
     },
 
-    /// Manage aliases for an MCP server (e.g. atx mcp alias figma INIT-358 wOeG8ZbAQwzyrtZbWpAmIB)
+    /// Manage aliases for an MCP server (e.g. atx mcp alias figma PROJ-123 sample_key)
     Alias {
         /// Server identifier name (e.g. figma)
         server: String,
 
-        /// Source alias or ticket key (e.g. INIT-358 or CANONICAL_KEY)
+        /// Source alias or ticket key (e.g. PROJ-123 or CANONICAL_KEY)
         from: String,
 
-        /// Target cloned key or URL (e.g. wOeG8ZbAQwzyrtZbWpAmIB)
+        /// Target cloned key or URL (e.g. sample_key)
         to: String,
     },
 }
@@ -1999,6 +2011,10 @@ async fn main() -> Result<()> {
             println!("└────────────────────────────────────────────────────────────────────────────────────────┘");
         }
 
+        Commands::Ui { port, no_open } => {
+            atlas_desktop_backend::run_server(port, !no_open).await?;
+        }
+
         Commands::Connector { action } => {
             let cfg = Config::load_from_path(&config_path)?;
             let db_path = cfg.resolve_db_path();
@@ -2499,15 +2515,15 @@ mod tests {
 
     #[test]
     fn test_cli_mcp_alias() {
-        let cli = Cli::try_parse_from(["atx", "mcp", "alias", "figma", "INIT-358", "wOeG8ZbAQwzyrtZbWpAmIB"])
+        let cli = Cli::try_parse_from(["atx", "mcp", "alias", "figma", "PROJ-123", "sample_key"])
             .expect("parse atx mcp alias");
         match cli.command {
             Commands::Mcp {
                 action: Some(McpSubcommands::Alias { server, from, to }),
             } => {
                 assert_eq!(server, "figma");
-                assert_eq!(from, "INIT-358");
-                assert_eq!(to, "wOeG8ZbAQwzyrtZbWpAmIB");
+                assert_eq!(from, "PROJ-123");
+                assert_eq!(to, "sample_key");
             }
             _ => panic!("expected Commands::Mcp Alias"),
         }
@@ -2515,7 +2531,7 @@ mod tests {
 
     #[test]
     fn test_cli_context_figma_flag() {
-        let cli = Cli::try_parse_from(["atx", "context", "INIT-358", "--figma", "https://www.figma.com/design/wOeG8ZbAQwzyrtZbWpAmIB/Title"])
+        let cli = Cli::try_parse_from(["atx", "context", "PROJ-123", "--figma", "https://www.figma.com/design/sample_key/Title"])
             .expect("parse atx context --figma");
         match cli.command {
             Commands::Context {
@@ -2523,10 +2539,10 @@ mod tests {
                 figma,
                 ..
             } => {
-                assert_eq!(target, "INIT-358");
+                assert_eq!(target, "PROJ-123");
                 assert_eq!(
                     figma.as_deref(),
-                    Some("https://www.figma.com/design/wOeG8ZbAQwzyrtZbWpAmIB/Title")
+                    Some("https://www.figma.com/design/sample_key/Title")
                 );
             }
             _ => panic!("expected Commands::Context"),
@@ -2567,15 +2583,15 @@ mod tests {
 
     #[test]
     fn test_cli_cat_command() {
-        let cli = Cli::try_parse_from(["atx", "cat", "INIT-358", "--raw"])
-            .expect("parse atx cat INIT-358 --raw");
+        let cli = Cli::try_parse_from(["atx", "cat", "PROJ-123", "--raw"])
+            .expect("parse atx cat PROJ-123 --raw");
         match cli.command {
             Commands::Cat {
                 target,
                 raw,
                 json,
             } => {
-                assert_eq!(target, "INIT-358");
+                assert_eq!(target, "PROJ-123");
                 assert!(raw);
                 assert!(!json);
             }
@@ -2589,16 +2605,16 @@ mod tests {
         let storage = Storage::new(tmp_file.path())?;
 
         let ticket = KnowledgeArtifact {
-            id: KnowledgeArtifact::generate_id("jira", "https://jira.example.com", "INIT-358"),
+            id: KnowledgeArtifact::generate_id("jira", "https://jira.example.com", "PROJ-123"),
             kind: ArtifactKind::Ticket,
-            title: "Refund Partial Alfagift".to_string(),
+            title: "Support Multi-Currency Checkout".to_string(),
             summary: Some("In Development".to_string()),
             body: "Full ticket description content here with figma links".to_string(),
             provider: "jira".to_string(),
-            source_id: "INIT-358".to_string(),
-            source_url: "https://jira.example.com/browse/INIT-358".to_string(),
-            repository: Some("INIT".to_string()),
-            tags: vec!["project:INIT".to_string()],
+            source_id: "PROJ-123".to_string(),
+            source_url: "https://jira.example.com/browse/PROJ-123".to_string(),
+            repository: Some("PROJ".to_string()),
+            tags: vec!["project:PROJ".to_string()],
             relationships: vec![],
             created_at: Some(chrono::Utc::now()),
             updated_at: chrono::Utc::now(),
@@ -2609,18 +2625,39 @@ mod tests {
         storage.upsert_artifact(&ticket)?;
 
         // Test display_doc with raw = true
-        assert!(display_doc(&storage, "INIT-358", true, false).is_ok());
+        assert!(display_doc(&storage, "PROJ-123", true, false).is_ok());
 
         // Test display_doc with json = true
-        assert!(display_doc(&storage, "INIT-358", false, true).is_ok());
+        assert!(display_doc(&storage, "PROJ-123", false, true).is_ok());
 
         // Test display_doc normal formatted view
-        assert!(display_doc(&storage, "INIT-358", false, false).is_ok());
+        assert!(display_doc(&storage, "PROJ-123", false, false).is_ok());
 
         // Test non-existent artifact returns Ok(()) without panicking
         assert!(display_doc(&storage, "NON-EXISTENT-999", false, false).is_ok());
 
         Ok(())
+    }
+
+    #[test]
+    fn test_cli_ui_and_web_parsing() {
+        let parsed_ui = Cli::try_parse_from(["atx", "ui", "--port", "31415", "--no-open"]).unwrap();
+        match parsed_ui.command {
+            Commands::Ui { port, no_open } => {
+                assert_eq!(port, 31415);
+                assert!(no_open);
+            }
+            _ => panic!("expected Commands::Ui"),
+        }
+
+        let parsed_web = Cli::try_parse_from(["atx", "web"]).unwrap();
+        match parsed_web.command {
+            Commands::Ui { port, no_open } => {
+                assert_eq!(port, 31415);
+                assert!(!no_open);
+            }
+            _ => panic!("expected Commands::Ui"),
+        }
     }
 }
 

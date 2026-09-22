@@ -9,7 +9,6 @@ import { SyncPage } from './features/sync/SyncPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { AboutPage } from './features/about/AboutPage';
 import { ChatPage } from './features/chat/ChatPage';
-import { ArtifactViewerPage } from './features/viewer/ArtifactViewerPage';
 import { McpHubPage } from './features/mcp/McpHubPage';
 
 const queryClient = new QueryClient({
@@ -29,7 +28,6 @@ export const App: React.FC = () => {
 
   const [featureFlags, setFeatureFlags] = useState({
     aiChat: false,
-    artifactViewer: false,
   });
 
   useEffect(() => {
@@ -48,7 +46,7 @@ export const App: React.FC = () => {
     setIsDarkMode((prev) => !prev);
   };
 
-  const handleToggleFeature = (feature: 'aiChat' | 'artifactViewer') => {
+  const handleToggleFeature = (feature: 'aiChat') => {
     setFeatureFlags((prev) => ({
       ...prev,
       [feature]: !prev[feature],
@@ -65,6 +63,8 @@ export const App: React.FC = () => {
         return <McpHubPage />;
       case 'knowledge':
         return <ExplorerPage />;
+      case 'viewer':
+        return <ExplorerPage initialViewMode="graph" />;
       case 'sync':
         return <SyncPage />;
       case 'settings':
@@ -73,8 +73,6 @@ export const App: React.FC = () => {
         return <AboutPage />;
       case 'chat':
         return featureFlags.aiChat ? <ChatPage /> : <DashboardPage />;
-      case 'viewer':
-        return featureFlags.artifactViewer ? <ArtifactViewerPage /> : <DashboardPage />;
       default:
         return <DashboardPage />;
     }
