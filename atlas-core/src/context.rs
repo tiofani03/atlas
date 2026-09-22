@@ -2202,7 +2202,7 @@ fn infer_advanced_hypothesis(
     }
 
     let impact = if !repos.is_empty() && (!prs.is_empty() || !adrs.is_empty()) {
-        "Medium"
+        "Low"
     } else if !repos.is_empty() {
         "Medium"
     } else {
@@ -2449,7 +2449,7 @@ fn infer_implementation_areas(
     }
 
     let impact = if !repos.is_empty() && (!adrs.is_empty() || !apis.is_empty()) {
-        "Medium"
+        "Low"
     } else if !repos.is_empty() {
         "Medium"
     } else {
