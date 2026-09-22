@@ -283,3 +283,73 @@ fn test_context_builder_rejects_unrelated_promotion_placeholders() -> anyhow::Re
     Ok(())
 }
 
+#[test]
+fn test_context_builder_does_not_promote_api_tickets_to_high_confidence_contracts() -> anyhow::Result<()> {
+    let tmp_file = NamedTempFile::new()?;
+    let storage = Storage::new(tmp_file.path())?;
+    let now = Utc::now();
+
+    let epic = KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("jira", "https://tayoai.atlassian.net", "PC-5"),
+        kind: ArtifactKind::Issue,
+        title: "EPIC-1: User Authentication & Workspace Access".to_string(),
+        summary: Some("Authentication and workspace access".to_string()),
+        body: "OAuth, membership, and RBAC workspace access.".to_string(),
+        provider: "jira".to_string(),
+        source_id: "PC-5".to_string(),
+        source_url: "https://tayoai.atlassian.net/browse/PC-5".to_string(),
+        repository: Some("PC".to_string()),
+        tags: vec!["epic".to_string(), "auth".to_string()],
+        relationships: Vec::new(),
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: "cs_pc5_api_ticket_guard".to_string(),
+        metadata: serde_json::json!({ "status": "To Do" }),
+    };
+
+    let make_ticket = |source_id: &str, title: &str| KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("jira", "https://tayoai.atlassian.net", source_id),
+        kind: ArtifactKind::Ticket,
+        title: title.to_string(),
+        summary: Some("Backend work item".to_string()),
+        body: "Implementation task for the product workspace.".to_string(),
+        provider: "jira".to_string(),
+        source_id: source_id.to_string(),
+        source_url: format!("https://tayoai.atlassian.net/browse/{}", source_id),
+        repository: Some("PC".to_string()),
+        tags: vec!["backend".to_string()],
+        relationships: Vec::new(),
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: format!("cs_{}", source_id),
+        metadata: serde_json::json!({ "status": "To Do" }),
+    };
+
+    storage.upsert_artifact(&epic)?;
+    storage.upsert_artifact(&make_ticket(
+        "PC-50",
+        "[BE] Sprint Entity CRUD & Task Backlog Allocation API in Go",
+    ))?;
+    storage.upsert_artifact(&make_ticket(
+        "PC-60",
+        "[BE] Member Workload Task Breakdown API in Go",
+    ))?;
+
+    let package = ContextBuilder::new(&storage).build(
+        Some("issue"),
+        "PC-5",
+        &ContextOptions::default(),
+    )?;
+
+    assert!(package.apis.is_empty(), "Jira work tickets must not become API contracts");
+    for evidence in &package.evidence_ranking {
+        if ["PC-50", "PC-60"].contains(&evidence.artifact_id.as_str()) {
+            assert_ne!(evidence.kind, "API Contract");
+            assert_ne!(evidence.confidence_level, "High Confidence");
+        }
+    }
+
+    Ok(())
+}

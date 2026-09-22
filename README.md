@@ -125,6 +125,35 @@ atx ui --no-open
 
 The Web UI runs on **`http://localhost:31415`** by default.
 
+### Run, Stop, Restart, and Check Status
+
+`atx ui` runs the Axum backend and the embedded web UI together. The commands below use the binary built from the current checkout, so they include the latest local changes:
+
+```bash
+# Build the current binary
+make desktop-build
+
+# Update the `atx` command installed in PATH
+make install-cli
+
+# Run in the foreground (Ctrl+C to stop)
+make desktop
+
+# Restart in the background
+make desktop-restart
+
+# Check that the backend and web UI are up
+make desktop-status
+
+# Stop the service
+make desktop-stop
+
+# View detached-process logs
+tail -f /tmp/atlas-ui.log
+```
+
+The detached service is available at **`http://localhost:31415`**. The separate Vite development server is started by `./dev.sh` and uses port `31420`.
+
 ### 🌟 Key Web UI Features:
 - 🕸️ **Interactive Graph Visualizer**: Visualize relationships across PRs, Commits, Jira Tickets, and Figma Specs with Dagre auto-layout, depth expansion, and metadata drawer.
 - 📑 **Knowledge Explorer**: Seamlessly switch between `Table` and `Graph` views to filter, search, and inspect engineering artifacts.

@@ -1134,6 +1134,11 @@ fn is_architecture_decision_header(header: &ArtifactHeader) -> bool {
 }
 
 fn is_api_header(header: &ArtifactHeader) -> bool {
+    // Work-tracking items can mention APIs in their title without being an
+    // API contract. They must remain ordinary related tickets/issues.
+    if matches!(header.kind, ArtifactKind::Ticket | ArtifactKind::Issue) {
+        return false;
+    }
     if matches!(header.kind, ArtifactKind::Component) {
         return true;
     }
@@ -1275,6 +1280,12 @@ fn is_architecture_decision(art: &KnowledgeArtifact) -> bool {
 }
 
 fn is_api_artifact(art: &KnowledgeArtifact) -> bool {
+    // A Jira/GitHub/Linear ticket titled "... API ..." is still a work item,
+    // not a contract specification. Contract artifacts have a dedicated kind
+    // (Component/Specification) or come from an explicit API document source.
+    if matches!(art.kind, ArtifactKind::Ticket | ArtifactKind::Issue) {
+        return false;
+    }
     if matches!(art.kind, ArtifactKind::Component) {
         return true;
     }
@@ -2746,6 +2757,5 @@ fn prioritize_knowledge_gaps(
         optional,
     }
 }
-
 
 

@@ -385,7 +385,14 @@ impl Connector for JiraConnector {
             let mut req = self
                 .client
                 .get(&url)
-                .query(&[("maxResults", max_results.to_string())]);
+                .query(&[("maxResults", max_results.to_string())])
+                // Jira's /search/jql endpoint returns only the issue id when
+                // fields are omitted. The parser needs key plus these fields
+                // to build a complete local artifact.
+                .query(&[(
+                    "fields",
+                    "summary,status,description,created,updated,labels,project,parent,subtasks,issuelinks",
+                )]);
 
             if !jql.is_empty() {
                 req = req.query(&[("jql", &jql)]);
