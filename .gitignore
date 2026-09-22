@@ -53,3 +53,7 @@ Thumbs.db
 .vite/
 **/node_modules/.vite/
 /graphify-out/
+
+# Plans & Prompts
+docs/superpowers/
+.superpowers/
