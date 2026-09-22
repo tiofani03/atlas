@@ -527,3 +527,26 @@ fn test_concurrent_reads_during_batch_write() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_concurrent_storage_initialization() -> anyhow::Result<()> {
+    let tmp_file = NamedTempFile::new()?;
+    let path = tmp_file.path().to_path_buf();
+
+    // Spawn 10 threads simultaneously instantiating Storage on the exact same database file
+    let mut handles = Vec::new();
+    for _ in 0..10 {
+        let p = path.clone();
+        handles.push(std::thread::spawn(move || -> anyhow::Result<()> {
+            let storage = Storage::new(&p)?;
+            let _ = storage.get_stats()?;
+            Ok(())
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap()?;
+    }
+
+    Ok(())
+}
+

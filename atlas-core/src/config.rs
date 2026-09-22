@@ -120,8 +120,16 @@ impl ConnectorConfig {
 
     pub fn get_api_token(&self) -> Result<String> {
         if let Some(ref token) = self.api_token {
-            if !token.is_empty() {
-                return Ok(token.clone());
+            let trimmed = token.trim();
+            if !trimmed.is_empty() {
+                if trimmed.starts_with("${") && trimmed.ends_with('}') {
+                    let var_name = &trimmed[2..trimmed.len() - 1];
+                    let val = std::env::var(var_name).with_context(|| {
+                        format!("Environment variable '{}' referenced by api_token is not set", var_name)
+                    })?;
+                    return Ok(val);
+                }
+                return Ok(trimmed.to_string());
             }
         }
         if let Some(ref env_var) = self.api_token_env {
@@ -134,6 +142,43 @@ impl ConnectorConfig {
         anyhow::bail!(
             "No API token provided for connector. Specify 'api_token' or 'api_token_env' in config"
         )
+    }
+
+    pub fn get_email(&self) -> String {
+        let trimmed = self.email.trim();
+        if trimmed.starts_with("${") && trimmed.ends_with('}') {
+            let var_name = &trimmed[2..trimmed.len() - 1];
+            std::env::var(var_name).unwrap_or_else(|_| self.email.clone())
+        } else {
+            self.email.clone()
+        }
+    }
+
+    pub fn has_plaintext_secret(&self) -> bool {
+        if let Some(ref token) = self.api_token {
+            let trimmed = token.trim();
+            if !trimmed.is_empty() && !(trimmed.starts_with("${") && trimmed.ends_with('}')) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn redact_api_token(&self) -> Option<String> {
+        if let Some(ref token) = self.api_token {
+            let trimmed = token.trim();
+            if trimmed.starts_with("${") && trimmed.ends_with('}') {
+                return Some(trimmed.to_string());
+            }
+            if trimmed.len() <= 4 {
+                return Some("****".to_string());
+            }
+            return Some(format!("{}...{}", &trimmed[..2], &trimmed[trimmed.len() - 2..]));
+        }
+        if let Some(ref env_var) = self.api_token_env {
+            return Some(format!("${{{}}}", env_var));
+        }
+        None
     }
 }
 
@@ -278,5 +323,26 @@ mod tests {
         let roundtrip: Config = toml::from_str(&serialized).expect("deserialize roundtrip");
         assert_eq!(roundtrip.mcp_servers["figma"].aliases, figma.aliases);
     }
+
+    #[test]
+    fn test_connector_config_env_var_and_redaction() {
+        std::env::set_var("TEST_JIRA_SECRET_TOKEN", "super-secret-12345");
+
+        let mut cfg = ConnectorConfig::default();
+        cfg.api_token = Some("${TEST_JIRA_SECRET_TOKEN}".to_string());
+        assert_eq!(cfg.get_api_token().unwrap(), "super-secret-12345");
+        assert!(!cfg.has_plaintext_secret());
+        assert_eq!(cfg.redact_api_token().unwrap(), "${TEST_JIRA_SECRET_TOKEN}");
+
+        // Plaintext token
+        let mut cfg_plain = ConnectorConfig::default();
+        cfg_plain.api_token = Some("my_secret_token_12345678".to_string());
+        assert!(cfg_plain.has_plaintext_secret());
+        let redacted = cfg_plain.redact_api_token().unwrap();
+        assert!(redacted.starts_with("my"));
+        assert!(redacted.ends_with("78"));
+        assert!(!redacted.contains("secret"));
+    }
 }
+
 

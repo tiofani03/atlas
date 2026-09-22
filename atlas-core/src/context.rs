@@ -1134,6 +1134,11 @@ fn is_architecture_decision_header(header: &ArtifactHeader) -> bool {
 }
 
 fn is_api_header(header: &ArtifactHeader) -> bool {
+    // Work-tracking items can mention APIs in their title without being an
+    // API contract. They must remain ordinary related tickets/issues.
+    if matches!(header.kind, ArtifactKind::Ticket | ArtifactKind::Issue) {
+        return false;
+    }
     if matches!(header.kind, ArtifactKind::Component) {
         return true;
     }
@@ -1275,6 +1280,12 @@ fn is_architecture_decision(art: &KnowledgeArtifact) -> bool {
 }
 
 fn is_api_artifact(art: &KnowledgeArtifact) -> bool {
+    // A Jira/GitHub/Linear ticket titled "... API ..." is still a work item,
+    // not a contract specification. Contract artifacts have a dedicated kind
+    // (Component/Specification) or come from an explicit API document source.
+    if matches!(art.kind, ArtifactKind::Ticket | ArtifactKind::Issue) {
+        return false;
+    }
     if matches!(art.kind, ArtifactKind::Component) {
         return true;
     }
@@ -2377,7 +2388,7 @@ fn build_evidence_ranking(
             let conf = if is_direct { "Medium Confidence" } else { "Low Confidence" };
             let stars = if is_direct { "★★★☆☆" } else { "★☆☆☆☆" };
             let reason = if is_direct {
-                "Related feature with similar promotion mechanics"
+                "Related artifact with direct graph relationship"
             } else {
                 "Indirect relationship only"
             };
@@ -2435,17 +2446,36 @@ fn infer_implementation_areas(
     }
 
     if business_rules.is_empty() {
-        business_rules.push("Promotion eligibility".to_string());
-        business_rules.push("Voucher redemption mechanics".to_string());
-        business_rules.push("Campaign configuration limits".to_string());
+        if let Some(art) = primary {
+            if let Some(summary) = &art.summary {
+                let trimmed = summary.trim();
+                if !trimmed.is_empty() {
+                    business_rules.push(trimmed.to_string());
+                }
+            }
+            if business_rules.is_empty() && !art.title.trim().is_empty() {
+                business_rules.push(format!("Primary requirement: {}", art.title.trim()));
+            }
+        }
     }
 
-    potential_components.push("Promotion Engine".to_string());
-    potential_components.push("Validation Layer".to_string());
-    potential_components.push("Campaign Configuration".to_string());
-
+    if !repos.is_empty() {
+        for r in repos {
+            potential_components.push(format!("Repository: {}", r));
+        }
+    }
     if !apis.is_empty() {
         potential_components.push("API Service Interface".to_string());
+    }
+    if !adrs.is_empty() {
+        potential_components.push("Architecture Decision Record".to_string());
+    }
+    if potential_components.is_empty() {
+        if let Some(repo) = primary.as_ref().and_then(|a| a.repository.as_deref()) {
+            potential_components.push(format!("Component: {}", repo));
+        } else {
+            potential_components.push("Core Application Module".to_string());
+        }
     }
 
     let impact = if !repos.is_empty() && (!adrs.is_empty() || !apis.is_empty()) {
@@ -2660,7 +2690,7 @@ fn predict_implementation_risks(
             level: "Potential Risk".to_string(),
             area: "Shared Domain Subsystem".to_string(),
             description: format!("Shared subsystem in repository '{}' referenced by multiple tickets.", repos[0]),
-            evidence: "Repository metadata indicates multiple campaign tickets referencing the same subsystem.".to_string(),
+            evidence: "Repository metadata indicates multiple tickets referencing the same subsystem.".to_string(),
         });
     }
 
@@ -2727,6 +2757,5 @@ fn prioritize_knowledge_gaps(
         optional,
     }
 }
-
 
 

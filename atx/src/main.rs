@@ -1413,7 +1413,13 @@ async fn main() -> Result<()> {
             };
 
             if json {
-                println!("{}", serde_json::to_string_pretty(&results)?);
+                if raw {
+                    println!("{}", serde_json::to_string_pretty(&results)?);
+                } else {
+                    let normalized: Vec<formatter::NormalizedArtifactJson> =
+                        results.iter().map(formatter::NormalizedArtifactJson::from).collect();
+                    println!("{}", serde_json::to_string_pretty(&normalized)?);
+                }
             } else {
                 println!(
                     "{}",
@@ -1437,7 +1443,12 @@ async fn main() -> Result<()> {
             } else if matches.len() == 1 {
                 let artifact = &matches[0];
                 if json {
-                    println!("{}", serde_json::to_string_pretty(artifact)?);
+                    if raw {
+                        println!("{}", serde_json::to_string_pretty(artifact)?);
+                    } else {
+                        let normalized = formatter::NormalizedArtifactJson::from(artifact);
+                        println!("{}", serde_json::to_string_pretty(&normalized)?);
+                    }
                 } else {
                     println!(
                         "{}",
@@ -1992,6 +2003,20 @@ async fn main() -> Result<()> {
             let stats = storage.get_stats()?;
             println!("│ [✓] Database Integrity: {} artifacts indexed. 0 dangling edges in graph              │", stats.total_artifacts);
             println!("│ [✓] Storage Capacity: DB size {:.2} MB                                                 │", stats.db_size_bytes as f64 / 1024.0 / 1024.0);
+            
+            let mut plaintext_secrets = Vec::new();
+            for (cid, c) in &cfg.connectors {
+                if c.has_plaintext_secret() {
+                    plaintext_secrets.push(cid);
+                }
+            }
+            if !plaintext_secrets.is_empty() {
+                let joined = plaintext_secrets.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+                println!("│ [!] Credential Security: Plaintext secret detected in: {:<32} │", formatter::safe_truncate(&joined, 32));
+                println!("│     Recommendation: Use '${{ENV_VAR}}' syntax or 'api_token_env' to protect secrets.   │");
+            } else {
+                println!("│ [✓] Credential Security: No plaintext secrets detected in connectors config           │");
+            }
             println!("│                                                                                        │");
             println!("│ CONNECTOR HEALTH CHECKS:                                                               │");
 
@@ -2059,6 +2084,9 @@ async fn main() -> Result<()> {
                     if let Some(c) = conn_cfg {
                         println!("│ Provider:          {:<73} │", c.provider);
                         println!("│ Target Resource:   {:<73} │", c.repos.join(", "));
+                        if let Some(redacted) = c.redact_api_token() {
+                            println!("│ Auth Credential:   {:<73} │", redacted);
+                        }
                     } else {
                         println!("│ Status:            Not registered in active config.toml                              │");
                     }
