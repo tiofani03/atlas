@@ -22,6 +22,30 @@
 
 ---
 
+## 📦 Quick Installation
+
+You can install and use the Atlas CLI (`atx`) directly without cloning this repository:
+
+### Linux & macOS (One-Line Installer)
+```bash
+curl -fsSL https://raw.githubusercontent.com/tiofani03/atlas/main/install.sh | bash
+```
+
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/tiofani03/atlas/main/install.ps1 | iex
+```
+
+### Via Cargo (For Rust Developers)
+```bash
+cargo install --git https://github.com/tiofani03/atlas atx
+```
+
+### Pre-compiled Binaries
+Standalone binaries for Linux (`x86_64`, `aarch64`), macOS (`Apple Silicon`, `Intel`), and Windows (`x64`) are automatically published to [GitHub Releases](https://github.com/tiofani03/atlas/releases).
+
+---
+
 ## 📁 Repository Structure
 
 ```text
