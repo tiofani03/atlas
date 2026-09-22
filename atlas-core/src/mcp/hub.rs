@@ -309,7 +309,7 @@ impl McpHub {
         }
 
         let mut sorted_servers: Vec<&UpstreamServer> = self.servers.iter().collect();
-        sorted_servers.sort_by(|a, b| b.prefix.len().cmp(&a.prefix.len()));
+        sorted_servers.sort_by_key(|b| std::cmp::Reverse(b.prefix.len()));
 
         for server in sorted_servers {
             let marker = format!("{}__", server.prefix);

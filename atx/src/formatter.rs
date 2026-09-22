@@ -50,7 +50,7 @@ impl RelationshipCounts {
         for rel in &art.relationships {
             let target = &rel.target_id;
             let canon_target = if target.contains(':') && !target.contains('#') && !target.contains('@') {
-                target.split(':').last().unwrap_or(target).to_string()
+                target.split(':').next_back().unwrap_or(target).to_string()
             } else {
                 target.clone()
             };
@@ -138,8 +138,8 @@ pub fn extract_status(art: &KnowledgeArtifact) -> String {
         }
     }
     if let Some(ref sum) = art.summary {
-        if sum.starts_with("Status: ") {
-            let s = sum["Status: ".len()..].trim();
+        if let Some(stripped) = sum.strip_prefix("Status: ") {
+            let s = stripped.trim();
             if !s.is_empty() {
                 return s.to_string();
             }
@@ -343,8 +343,8 @@ pub fn format_search_results(
         out.push_str(&format!("{:<12}{}\n\n", "Provider", provider));
 
         if let Some(ref sum) = art.summary {
-            let clean_sum = if sum.starts_with("Status: ") {
-                sum["Status: ".len()..].trim()
+            let clean_sum = if let Some(stripped) = sum.strip_prefix("Status: ") {
+                stripped.trim()
             } else {
                 sum.as_str()
             };
@@ -549,8 +549,8 @@ pub fn format_artifact_detail(
     out.push_str("\n\n");
 
     if let Some(ref sum) = art.summary {
-        let clean_sum = if sum.starts_with("Status: ") {
-            sum["Status: ".len()..].trim()
+        let clean_sum = if let Some(stripped) = sum.strip_prefix("Status: ") {
+            stripped.trim()
         } else {
             sum.as_str()
         };
@@ -672,6 +672,7 @@ pub fn format_artifact_detail(
 }
 
 /// Trait representing an atomic, reusable context section
+#[allow(dead_code)]
 pub trait ContextSection {
     fn id(&self) -> &'static str;
     fn title(&self) -> &'static str;
@@ -1283,6 +1284,7 @@ pub fn format_context_package(
     compositor.compose(pkg, verbose)
 }
 
+#[allow(dead_code)]
 fn format_dots(label: &str, value: &str, total_width: usize) -> String {
     let label_chars = label.chars().count();
     let val_chars = value.chars().count();
@@ -1291,6 +1293,7 @@ fn format_dots(label: &str, value: &str, total_width: usize) -> String {
     format!("{} {} {}", label, dots, value)
 }
 
+#[allow(dead_code)]
 fn group_related_artifacts(pkg: &atlas_core::ContextPackage) -> Vec<(String, Vec<(String, String)>)> {
     let mut groups: std::collections::BTreeMap<String, Vec<(String, String)>> = std::collections::BTreeMap::new();
 

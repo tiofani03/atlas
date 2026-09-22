@@ -371,7 +371,7 @@ impl<'a> ContextBuilder<'a> {
 
         let status = primary_artifact
             .as_ref()
-            .map(|a| extract_status(a))
+            .map(extract_status)
             .unwrap_or_else(|| "Unknown".to_string());
 
         let primary_id_key = primary_artifact
@@ -1322,6 +1322,7 @@ fn extract_search_terms(title: &str, tags: &[String]) -> String {
     words.join(" ")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_completeness(
     target_aspects: &HashSet<DomainAspect>,
     has_primary: bool,
@@ -1499,11 +1500,10 @@ fn compute_completeness(
         }
     }
 
-    let score_percentage = if total_possible > 0 {
-        ((total_score * 100) / total_possible).min(100) as u8
-    } else {
-        100
-    };
+    let score_percentage = (total_score * 100)
+        .checked_div(total_possible)
+        .unwrap_or(100)
+        .min(100) as u8;
 
     let blocks_filled = ((score_percentage as u32 + 5) / 10).min(10) as usize;
     let progress_bar = format!("{}{}", "█".repeat(blocks_filled), "░".repeat(10 - blocks_filled));
@@ -1960,7 +1960,7 @@ fn generate_investigation_steps(
         step_num += 1;
     }
 
-    if let Some(item) = reading.iter().nth(1) {
+    if let Some(item) = reading.get(1) {
         steps.push(InvestigationStep {
             step_number: step_num,
             goal: "Locate prior implementation pattern or reference.".to_string(),
@@ -2471,6 +2471,7 @@ fn infer_implementation_areas(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_dependency_aware_queue(
     target_id: &str,
     title: &str,

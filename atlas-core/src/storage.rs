@@ -1361,6 +1361,7 @@ impl Storage {
         Ok(items)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn search_fts_paginated(
         &self,
         query: &str,
@@ -1461,15 +1462,14 @@ impl Storage {
         };
 
         let mut results = Vec::new();
-        for r in rows {
-            if let Ok(art) = r {
-                results.push(art);
-            }
+        for art in rows.flatten() {
+            results.push(art);
         }
         Ok((results, total))
     }
 
     /// Fallback search using pure SQL LIKE queries when FTS5 query syntax fails
+    #[allow(clippy::too_many_arguments)]
     pub fn search_like_fallback(
         &self,
         query: &str,
@@ -1537,10 +1537,8 @@ impl Storage {
         let rows = stmt.query_map(rusqlite_params_data.as_slice(), Self::row_to_artifact)?;
 
         let mut results = Vec::new();
-        for r in rows {
-            if let Ok(art) = r {
-                results.push(art);
-            }
+        for art in rows.flatten() {
+            results.push(art);
         }
         Ok((results, total))
     }
@@ -2133,8 +2131,8 @@ impl Storage {
         // Only attempt exact ID lookup if query looks like a single identifier (no spaces)
         if !clean_query.contains(' ') {
             if let Ok(Some(h)) = self.get_artifact_header_by_id(&clean_query) {
-                let matches_kind = kind.map_or(true, |k| h.kind.to_string().eq_ignore_ascii_case(k));
-                let matches_repo = repository.map_or(true, |r| h.repository.as_deref() == Some(r));
+                let matches_kind = kind.is_none_or(|k| h.kind.to_string().eq_ignore_ascii_case(k));
+                let matches_repo = repository.is_none_or(|r| h.repository.as_deref() == Some(r));
                 if matches_kind && matches_repo {
                     seen_ids.insert(h.id.clone());
                     results.push(h);
@@ -2172,11 +2170,9 @@ impl Storage {
         if let Ok(mut stmt) = conn.prepare(&fts_sql) {
             let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
             if let Ok(rows) = stmt.query_map(rusqlite_params.as_slice(), Self::row_to_header) {
-                for r in rows {
-                    if let Ok(h) = r {
-                        if seen_ids.insert(h.id.clone()) {
-                            results.push(h);
-                        }
+                for h in rows.flatten() {
+                    if seen_ids.insert(h.id.clone()) {
+                        results.push(h);
                     }
                 }
             }

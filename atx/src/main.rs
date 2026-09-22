@@ -1519,9 +1519,11 @@ async fn main() -> Result<()> {
             }
 
             let builder = atlas_core::ContextBuilder::new(&storage);
-            let mut options = atlas_core::ContextOptions::default();
-            options.depth = depth;
-            options.profile = profile;
+            let mut options = atlas_core::ContextOptions {
+                depth,
+                profile,
+                ..Default::default()
+            };
             if let Some(mc) = max_commits {
                 options.max_commits = mc;
             }
@@ -1908,11 +1910,12 @@ async fn main() -> Result<()> {
             let cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
 
-            if list || target.is_none() {
+            if list {
                 list_or_search_docs(&storage, None)?;
-            } else {
-                let target_str = target.unwrap();
+            } else if let Some(target_str) = target {
                 display_doc(&storage, &target_str, raw, json)?;
+            } else {
+                list_or_search_docs(&storage, None)?;
             }
         }
 

@@ -234,8 +234,8 @@ pub fn build_explain_output(
                 ArtifactKind::Document | ArtifactKind::Specification => {
                     format!("14 matching technical phrases in {} (AI Confidence {}%)", rel_id, confidence)
                 }
-                ArtifactKind::Component => format!("Touched ContextQueryHandler in PR #1240"),
-                _ => format!("Embedding cosine similarity > 0.88"),
+                ArtifactKind::Component => "Touched ContextQueryHandler in PR #1240".to_string(),
+                _ => "Embedding cosine similarity > 0.88".to_string(),
             };
             global_evidence.insert(evidence_text.clone());
 
@@ -284,7 +284,7 @@ pub fn build_explain_output(
                     let sub = rel_art
                         .repository
                         .as_deref()
-                        .map(|r| r.split('/').last().unwrap_or(r))
+                        .map(|r| r.split('/').next_back().unwrap_or(r))
                         .unwrap_or("atlas-core");
                     let author = rel_art.metadata.get("author").and_then(|v| v.as_str()).unwrap_or("@dev");
                     let state = if status.to_lowercase().contains("merge") { "Merged" } else { &status };
@@ -562,8 +562,9 @@ pub fn render_explain_terminal(output: &ExplainOutput, opts: &ExplainOptions) ->
     out.push_str("  ATLAS KNOWLEDGE GRAPH EXPLANATION\n");
     out.push_str("================================================================================\n");
     out.push_str(&format!(
-        "  {} {}\n",
-        format!("{} {}", output.artifact.kind.to_uppercase(), output.artifact.id),
+        "  {} {} {}\n",
+        output.artifact.kind.to_uppercase(),
+        output.artifact.id,
         c_cyan
     ));
     out.push_str(&format!("  Title : {}\n", output.artifact.title));

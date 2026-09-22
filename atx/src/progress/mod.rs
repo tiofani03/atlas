@@ -2,6 +2,7 @@ use atlas_core::progress::{ProgressEvent, SyncAction};
 
 /// CLI Progress Render Mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ProgressRenderMode {
     InteractiveTui,
     CiConsole,
@@ -43,7 +44,7 @@ impl ProgressRenderer {
                             SyncAction::Deleted => {}
                         }
 
-                        if total_processed % 500 == 0 || total_processed == 1 {
+                        if total_processed.is_multiple_of(500) || total_processed == 1 {
                             let elapsed = start.elapsed().as_secs_f64().max(0.001);
                             let rate = total_processed as f64 / elapsed;
                             println!(
