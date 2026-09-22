@@ -7,6 +7,84 @@ pub fn safe_truncate(text: &str, max_chars: usize) -> &str {
     }
 }
 
+/// Machine-optimized normalized JSON output representation of an artifact
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct NormalizedArtifactJson {
+    pub id: String,
+    pub kind: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub relationships: Vec<ArtifactRelationship>,
+    pub source: NormalizedSourceJson,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct NormalizedSourceJson {
+    pub provider: String,
+    pub url: String,
+    pub synced_at: chrono::DateTime<chrono::Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<&KnowledgeArtifact> for NormalizedArtifactJson {
+    fn from(art: &KnowledgeArtifact) -> Self {
+        let status = art
+            .metadata
+            .get("status")
+            .and_then(|s| s.get("name").or(Some(s)))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                art.summary.as_ref().and_then(|sum| {
+                    if sum.starts_with("Status: ") {
+                        Some(sum["Status: ".len()..].trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+            });
+
+        let priority = art
+            .metadata
+            .get("priority")
+            .and_then(|p| p.get("name").or(Some(p)))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Self {
+            id: if !art.source_id.is_empty() {
+                art.source_id.clone()
+            } else {
+                art.id.clone()
+            },
+            kind: art.kind.to_string(),
+            title: art.title.clone(),
+            status,
+            priority,
+            repository: art.repository.clone(),
+            body: art.body.clone(),
+            tags: art.tags.clone(),
+            relationships: art.relationships.clone(),
+            source: NormalizedSourceJson {
+                provider: art.provider.clone(),
+                url: art.source_url.clone(),
+                synced_at: art.synced_at,
+                created_at: art.created_at,
+                updated_at: art.updated_at,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RelationshipCounts {
     pub tickets: usize,
@@ -1692,4 +1770,48 @@ mod tests {
         assert!(formatted.contains("Provider"));
         assert!(formatted.contains("Jira"));
     }
+
+    #[test]
+    fn test_normalized_artifact_json_excludes_raw_provider_payload() {
+        let art = KnowledgeArtifact {
+            id: "ka-123".to_string(),
+            kind: ArtifactKind::Ticket,
+            title: "EPIC-1: User Authentication & Workspace Access".to_string(),
+            summary: Some("Status: To Do".to_string()),
+            body: "PRD body".to_string(),
+            provider: "jira".to_string(),
+            source_id: "PC-5".to_string(),
+            source_url: "https://tayoai.atlassian.net/browse/PC-5".to_string(),
+            repository: Some("PC".to_string()),
+            tags: vec!["auth".to_string()],
+            relationships: vec![],
+            created_at: None,
+            updated_at: Utc::now(),
+            synced_at: Utc::now(),
+            checksum: "cs".to_string(),
+            metadata: serde_json::json!({
+                "huge_raw_payload": "should_be_omitted",
+                "customfield_10000": [1, 2, 3, 4],
+                "priority": { "name": "Medium" },
+                "status": { "name": "To Do" }
+            }),
+        };
+
+        let normalized = NormalizedArtifactJson::from(&art);
+        let json_val = serde_json::to_value(&normalized).unwrap();
+
+        assert_eq!(json_val["id"], "PC-5");
+        assert_eq!(json_val["kind"], "ticket");
+        assert_eq!(json_val["title"], "EPIC-1: User Authentication & Workspace Access");
+        assert_eq!(json_val["status"], "To Do");
+        assert_eq!(json_val["priority"], "Medium");
+        assert_eq!(json_val["repository"], "PC");
+        assert_eq!(json_val["source"]["provider"], "jira");
+        assert_eq!(json_val["source"]["url"], "https://tayoai.atlassian.net/browse/PC-5");
+
+        // Raw provider payload must NOT be present
+        assert!(json_val.get("metadata").is_none());
+        assert!(json_val.get("huge_raw_payload").is_none());
+    }
 }
+

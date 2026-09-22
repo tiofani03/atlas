@@ -228,3 +228,58 @@ fn test_context_builder_telemetry_and_depth() -> anyhow::Result<()> {
     assert_eq!(pkg.related_pull_requests.len(), 1);
     Ok(())
 }
+
+#[test]
+fn test_context_builder_rejects_unrelated_promotion_placeholders() -> anyhow::Result<()> {
+    let tmp_file = NamedTempFile::new()?;
+    let storage = Storage::new(tmp_file.path())?;
+    let now = Utc::now();
+
+    let auth_epic = KnowledgeArtifact {
+        id: KnowledgeArtifact::generate_id("jira", "https://tayoai.atlassian.net", "PC-5"),
+        kind: ArtifactKind::Issue,
+        title: "EPIC-1: User Authentication & Workspace Access".to_string(),
+        summary: Some("User authentication and multi-tenant workspace management".to_string()),
+        body: "High-level overview of OAuth authentication flow and RBAC workspace access.".to_string(),
+        provider: "jira".to_string(),
+        source_id: "PC-5".to_string(),
+        source_url: "https://tayoai.atlassian.net/browse/PC-5".to_string(),
+        repository: Some("PC".to_string()),
+        tags: vec!["auth".to_string(), "epic".to_string()],
+        relationships: Vec::new(),
+        created_at: Some(now),
+        updated_at: now,
+        synced_at: now,
+        checksum: "cs_pc5".to_string(),
+        metadata: serde_json::json!({ "status": "To Do" }),
+    };
+
+    storage.upsert_artifact(&auth_epic)?;
+
+    let builder = ContextBuilder::new(&storage);
+    let options = ContextOptions::default();
+    let pkg = builder.build(Some("issue"), "PC-5", &options)?;
+
+    // Check possible implementation areas
+    let possible_areas = pkg.implementation_areas.as_ref().expect("implementation_areas present");
+    for rule in &possible_areas.business_rules {
+        assert!(
+            !rule.to_lowercase().contains("promotion") && !rule.to_lowercase().contains("voucher") && !rule.to_lowercase().contains("campaign"),
+            "Business rule should not hallucinate unrelated promotions: {}", rule
+        );
+    }
+    for comp in &possible_areas.potential_components {
+        assert!(
+            !comp.to_lowercase().contains("promotion") && !comp.to_lowercase().contains("campaign"),
+            "Potential component should not hallucinate promotion engine: {}", comp
+        );
+    }
+
+    let json_str = serde_json::to_string(&pkg)?;
+    assert!(!json_str.to_lowercase().contains("promotion eligibility"));
+    assert!(!json_str.to_lowercase().contains("voucher redemption"));
+    assert!(!json_str.to_lowercase().contains("promotion engine"));
+
+    Ok(())
+}
+
