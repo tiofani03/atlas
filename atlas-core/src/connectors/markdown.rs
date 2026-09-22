@@ -280,7 +280,7 @@ impl MarkdownConnector {
 
                 // Text Events
                 Event::Text(text) | Event::Code(text) => {
-                    if let Some(_) = in_heading {
+                    if in_heading.is_some() {
                         current_heading_text.push_str(&text);
                     } else if in_code_block {
                         current_code_text.push_str(&text);

@@ -67,7 +67,7 @@ pub async fn search_objects(
             let total_pages = if total == 0 {
                 1
             } else {
-                (total + limit - 1) / limit
+                total.div_ceil(limit)
             };
 
             (

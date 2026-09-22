@@ -119,7 +119,7 @@ impl Connector for FigmaConnector {
 
                     let file_source_id = format!("file:{}", file_key);
                     let file_canonical_id = KnowledgeArtifact::generate_id("figma", "https://api.figma.com", &file_source_id);
-                    let file_checksum = KnowledgeArtifact::compute_checksum(&file_name, None, &file_key, &[]);
+                    let file_checksum = KnowledgeArtifact::compute_checksum(&file_name, None, file_key, &[]);
 
                     artifacts.push(KnowledgeArtifact {
                         id: file_canonical_id,

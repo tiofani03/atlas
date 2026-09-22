@@ -421,7 +421,7 @@ impl ClickupConnector {
                         .get("name")
                         .or_else(|| page_val.get("title"))
                         .and_then(|v| v.as_str())
-                        .or_else(|| doc.name.as_deref())
+                        .or(doc.name.as_deref())
                         .unwrap_or("Untitled Doc Page")
                         .to_string();
 
@@ -436,12 +436,12 @@ impl ClickupConnector {
 
                     let created_at = page_val
                         .get("date_created")
-                        .or_else(|| doc.date_created.as_ref())
+                        .or(doc.date_created.as_ref())
                         .and_then(Self::parse_timestamp);
 
                     let updated_at = page_val
                         .get("date_updated")
-                        .or_else(|| doc.date_updated.as_ref())
+                        .or(doc.date_updated.as_ref())
                         .and_then(Self::parse_timestamp)
                         .unwrap_or(now);
 
@@ -643,8 +643,6 @@ impl Connector for ClickupConnector {
                             ArtifactKind::Other("epic".to_string())
                         } else if combined.contains("milestone") {
                             ArtifactKind::Other("milestone".to_string())
-                        } else if combined.contains("feature") {
-                            ArtifactKind::Ticket
                         } else {
                             ArtifactKind::Ticket
                         }

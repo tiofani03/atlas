@@ -47,7 +47,7 @@ impl JiraConnector {
     }
 
     fn parse_adf_node(val: &Value, out: &mut String, depth: usize) {
-        if !val.is_object() {
+        if depth > 32 || !val.is_object() {
             return;
         }
 
