@@ -111,6 +111,7 @@ impl RetryBudget {
     }
 
     /// Record a successful call, replenishing retry tokens
+    #[allow(deprecated)]
     pub fn record_success(&self) {
         let _ = self.available_tokens.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
             Some((val + self.deposit_cost).min(self.max_tokens))
@@ -118,6 +119,7 @@ impl RetryBudget {
     }
 
     /// Consume tokens for a retry attempt. Returns true if granted.
+    #[allow(deprecated)]
     pub fn consume_retry(&self) -> bool {
         self.available_tokens
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
