@@ -1144,10 +1144,11 @@ fn is_api_header(header: &ArtifactHeader) -> bool {
     }
     let lower_title = header.title.to_lowercase();
     let lower_id = header.source_id.to_lowercase();
-    if lower_title.contains("api") || lower_id.contains("api") || lower_title.contains("endpoint") || lower_title.contains("openapi") || lower_title.contains("graphql") {
-        return true;
-    }
-    false
+    lower_title.contains("api")
+        || lower_id.contains("api")
+        || lower_title.contains("endpoint")
+        || lower_title.contains("openapi")
+        || lower_title.contains("graphql")
 }
 
 fn is_closed_or_historical_header(header: &ArtifactHeader) -> bool {
