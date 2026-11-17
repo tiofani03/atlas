@@ -62,7 +62,25 @@ export const DynamicConnectorModal: React.FC<DynamicConnectorModalProps> = ({
     setValues(init);
   }, [isOpen, manifest, initialConnector]);
 
-  if (!isOpen || !manifest) return null;
+  if (!isOpen) return null;
+
+  if (!manifest) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-zinc-800 shadow-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">Connector Schema Unavailable</h3>
+            <button type="button" onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-zinc-400">
+            Schema konfigurasi untuk connector ini belum termuat dari backend (`/api/connectors/schemas`). Pastikan server backend terbaru sedang berjalan lalu muat ulang halaman.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const buildPayload = () => {
     const payload: Record<string, unknown> = {
