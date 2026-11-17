@@ -243,6 +243,18 @@ pub fn all_connector_manifests() -> Vec<ConnectorManifest> {
                 field("service_account_file", "Service Account JSON", ConfigFieldType::Path, false, "./service-account.json", "Optional Google service account credentials path"),
             ],
         ),
+        manifest(
+            "plugin",
+            "Custom Plugin (SDK)",
+            "Connect any custom data source via an external JSON-RPC/stdio command.",
+            "custom",
+            &["plugin_command"],
+            false,
+            vec![
+                field("plugin_command", "Plugin Command", ConfigFieldType::Text, true, "python3", "Executable or interpreter command"),
+                field("plugin_args", "Plugin Arguments", ConfigFieldType::List, false, "./my_connector.py, --mode=sync", "Comma-separated arguments passed to the command"),
+            ],
+        ),
     ]
 }
 
@@ -253,7 +265,7 @@ mod tests {
     #[test]
     fn test_all_15_connector_manifests_present() {
         let manifests = all_connector_manifests();
-        assert_eq!(manifests.len(), 15);
+        assert_eq!(manifests.len(), 16);
         for m in &manifests {
             assert!(!m.provider.is_empty());
             assert!(!m.name.is_empty());
