@@ -1,4 +1,4 @@
-use crate::handlers::{chat, connectors, graph, mcp, search, status, sync, webhooks};
+use crate::handlers::{chat, connectors, graph, mcp, search, status, sync, timeline, webhooks};
 use crate::state::AppState;
 use axum::{
     http::{header, HeaderValue, Method},
@@ -84,6 +84,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/status", get(status::get_status))
         .route("/api/chat/config", get(chat::get_config))
         .route("/api/chat", post(chat::send_message))
+        .route("/api/chat/stream", post(chat::send_message_stream))
         .route("/api/chat/keys", post(chat::save_key))
         .route("/api/chat/keys/:provider", delete(chat::delete_key))
         .route("/api/storage/clear", post(status::clear_data))
@@ -169,8 +170,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/sync/status", get(sync::get_sync_status))
         .route("/api/webhooks/:provider", post(webhooks::handle_webhook))
         .route("/api/search", get(search::search_objects))
+        .route("/api/timeline", get(timeline::get_timeline))
         .route("/api/objects/:id", get(search::get_object_by_id))
         .route("/api/context/:id", get(search::get_context))
+        .route("/api/context/:id/export", get(search::export_context_markdown))
         .route("/api/graph/recent", get(graph::get_recent_nodes))
         .route("/api/graph/:id", get(graph::get_graph_by_id))
         .route(
@@ -181,6 +184,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/mcp/servers/:name/test", post(mcp::test_mcp_server))
         .route("/api/mcp/snippet", get(mcp::get_mcp_snippets))
         .route("/api/mcp/snippets", get(mcp::get_mcp_snippets))
+        .layer(axum::middleware::from_fn(crate::auth::require_bearer_if_configured))
         .layer(cors)
         .with_state(state);
 

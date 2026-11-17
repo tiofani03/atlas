@@ -45,6 +45,7 @@ pub struct McpHub {
     storage: Storage,
     servers: Vec<UpstreamServer>,
     figma_aliases: HashMap<String, String>,
+    config_path: Option<std::path::PathBuf>,
 }
 
 impl From<Storage> for McpHub {
@@ -60,6 +61,20 @@ impl McpHub {
             storage,
             servers: Vec::new(),
             figma_aliases: HashMap::new(),
+            config_path: None,
+        }
+    }
+
+    /// Attach an explicit config file path for MCP management tools (`atx_connector_*`, `atx_mcp_*`).
+    pub fn with_config_path(mut self, path: std::path::PathBuf) -> Self {
+        self.config_path = Some(path);
+        self
+    }
+
+    fn resolve_config_path(&self) -> Result<std::path::PathBuf> {
+        match &self.config_path {
+            Some(p) => Ok(p.clone()),
+            None => Config::default_config_path(),
         }
     }
 
@@ -246,6 +261,93 @@ impl McpHub {
                     "required": ["id"]
                 }
             }),
+            json!({
+                "name": "atx_connector_schemas",
+                "description": "List all supported connector providers (built-in and custom 'plugin') with their required/optional configuration fields",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }),
+            json!({
+                "name": "atx_connector_list",
+                "description": "List all configured Atlas connectors with redacted credentials and sync status",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }),
+            json!({
+                "name": "atx_connector_upsert",
+                "description": "Add or update a built-in or custom ('plugin') Atlas connector in config.toml and validate it",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Unique connector ID (e.g., 'github-main' or 'custom-erp')" },
+                        "provider": { "type": "string", "description": "Provider name (e.g., 'github', 'jira', 'markdown', 'local_git', or 'plugin' for custom)" },
+                        "config": { "type": "object", "description": "Provider-specific configuration fields (e.g., instance_url, api_token, repos, paths, plugin_command, plugin_args)" }
+                    },
+                    "required": ["id", "provider", "config"]
+                }
+            }),
+            json!({
+                "name": "atx_connector_remove",
+                "description": "Remove a configured Atlas connector from config.toml and optionally clear its synced artifacts",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Connector ID to remove" },
+                        "clear_data": { "type": "boolean", "description": "Clear synced artifacts for this connector (default: true)" }
+                    },
+                    "required": ["id"]
+                }
+            }),
+            json!({
+                "name": "atx_sync",
+                "description": "Trigger synchronization for a specific connector ID or all configured connectors",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "connector_id": { "type": "string", "description": "Optional connector ID to sync (omit to sync all)" },
+                        "full": { "type": "boolean", "description": "Force full re-sync ignoring watermarks (default: false)" }
+                    }
+                }
+            }),
+            json!({
+                "name": "atx_mcp_list",
+                "description": "List all configured upstream MCP servers in Atlas config.toml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }),
+            json!({
+                "name": "atx_mcp_upsert",
+                "description": "Add or update a custom upstream MCP server in Atlas config.toml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Unique MCP server name (e.g., 'linear' or 'custom-tools')" },
+                        "command": { "type": "string", "description": "Executable command (e.g., 'npx', 'uvx', 'python3')" },
+                        "args": { "type": "array", "items": { "type": "string" }, "description": "Command arguments" },
+                        "env": { "type": "object", "description": "Optional environment variables map" },
+                        "prefix": { "type": "string", "description": "Optional tool name prefix" },
+                        "enabled": { "type": "boolean", "description": "Whether the server is enabled (default: true)" }
+                    },
+                    "required": ["name", "command"]
+                }
+            }),
+            json!({
+                "name": "atx_mcp_remove",
+                "description": "Remove an upstream MCP server from Atlas config.toml",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "MCP server name to remove" }
+                    },
+                    "required": ["name"]
+                }
+            }),
         ]
     }
 
@@ -298,6 +400,11 @@ impl McpHub {
 
     /// Route a tool invocation to either local storage or the matching upstream MCP server.
     pub async fn route_tool_call(&self, tool_name: &str, arguments: Value) -> Result<Value> {
+        if is_management_tool(tool_name) {
+            let cfg_path = self.resolve_config_path()?;
+            return handle_management_tool(&self.storage, &cfg_path, tool_name, arguments).await;
+        }
+
         if is_native_tool(tool_name) {
             return handle_native_tool_with_figma_context(
                 &self.storage,
@@ -790,5 +897,322 @@ fn sanitize_and_resolve_arguments(
                 obj.insert("node_id".to_string(), json!(node));
             }
         }
+    }
+}
+
+fn is_management_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "atx_connector_schemas"
+            | "atx_connector_list"
+            | "atx_connector_upsert"
+            | "atx_connector_remove"
+            | "atx_sync"
+            | "atx_mcp_list"
+            | "atx_mcp_upsert"
+            | "atx_mcp_remove"
+    )
+}
+
+async fn handle_management_tool(
+    storage: &Storage,
+    config_path: &std::path::Path,
+    name: &str,
+    args: Value,
+) -> Result<Value> {
+    match name {
+        "atx_connector_schemas" => {
+            let manifests = crate::connectors::manifests::all_connector_manifests();
+            Ok(json!({
+                "content": [{ "type": "text", "text": serde_json::to_string_pretty(&manifests)? }]
+            }))
+        }
+        "atx_connector_list" => {
+            let cfg = Config::load_from_path(config_path)?;
+            let mut items = Vec::new();
+            for (id, c) in &cfg.connectors {
+                let last_sync = storage
+                    .get_last_sync(id)
+                    .ok()
+                    .flatten()
+                    .map(|dt| dt.to_rfc3339());
+                items.push(json!({
+                    "id": id,
+                    "provider": c.provider,
+                    "instance_url": c.instance_url,
+                    "api_token": c.redact_api_token(),
+                    "repos": c.repos,
+                    "projects": c.projects,
+                    "paths": c.get_paths(),
+                    "plugin_command": c.plugin_command,
+                    "last_synced_at": last_sync,
+                }));
+            }
+            Ok(json!({
+                "content": [{ "type": "text", "text": serde_json::to_string_pretty(&items)? }]
+            }))
+        }
+        "atx_connector_upsert" => {
+            let id = args
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Missing required parameter 'id'"))?
+                .to_string();
+            let provider = args
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Missing required parameter 'provider'"))?
+                .to_lowercase();
+
+            let mut config_val = args
+                .get("config")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            if let Some(obj) = config_val.as_object_mut() {
+                obj.insert("provider".to_string(), json!(provider));
+            }
+            let conn_cfg: crate::config::ConnectorConfig = serde_json::from_value(config_val)?;
+            let instance = crate::connectors::ConnectorInstance::build(&id, &conn_cfg)?;
+            let verify_msg = crate::connectors::Connector::verify(&instance)
+                .await
+                .unwrap_or_else(|e| format!("Saved (verify note: {})", e));
+
+            let mut cfg = Config::load_from_path(config_path)?;
+            cfg.connectors.insert(id.clone(), conn_cfg);
+            cfg.save_to_path(config_path)?;
+
+            Ok(json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string_pretty(&json!({
+                        "success": true,
+                        "id": id,
+                        "provider": provider,
+                        "verification": verify_msg
+                    }))?
+                }]
+            }))
+        }
+        "atx_connector_remove" => {
+            let id = args
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("Missing required parameter 'id'"))?;
+            let clear_data = args.get("clear_data").and_then(|v| v.as_bool()).unwrap_or(true);
+
+            let mut cfg = Config::load_from_path(config_path)?;
+            let removed = cfg.connectors.remove(id);
+            cfg.save_to_path(config_path)?;
+
+            let cleared = if clear_data {
+                let provider_opt = removed.as_ref().map(|c| c.provider.as_str());
+                let repos = removed.as_ref().map(|c| c.repos.clone()).unwrap_or_default();
+                storage.clear_connector_data(id, provider_opt, &repos).unwrap_or(0)
+            } else {
+                0
+            };
+
+            Ok(json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string_pretty(&json!({
+                        "success": removed.is_some(),
+                        "id": id,
+                        "cleared_artifacts": cleared
+                    }))?
+                }]
+            }))
+        }
+        "atx_sync" => {
+            let connector_id = args.get("connector_id").and_then(|v| v.as_str());
+            let full = args.get("full").and_then(|v| v.as_bool()).unwrap_or(false);
+            let cfg = Config::load_from_path(config_path)?;
+
+            let targets: Vec<(String, crate::config::ConnectorConfig)> = match connector_id {
+                Some(id) => {
+                    let c = cfg
+                        .connectors
+                        .get(id)
+                        .ok_or_else(|| anyhow::anyhow!("Connector '{}' not found", id))?;
+                    vec![(id.to_string(), c.clone())]
+                }
+                None => cfg.connectors.into_iter().collect(),
+            };
+
+            let mut summaries = Vec::new();
+            for (id, c) in targets {
+                let instance = crate::connectors::ConnectorInstance::build(&id, &c)?;
+                let summary =
+                    crate::sync::SyncEngine::run_sync(&instance as &dyn crate::connectors::Connector, storage, full)
+                        .await?;
+                summaries.push(summary);
+            }
+
+            Ok(json!({
+                "content": [{ "type": "text", "text": serde_json::to_string_pretty(&summaries)? }]
+            }))
+        }
+        "atx_mcp_list" => {
+            let cfg = Config::load_from_path(config_path)?;
+            Ok(json!({
+                "content": [{ "type": "text", "text": serde_json::to_string_pretty(&cfg.mcp_servers)? }]
+            }))
+        }
+        "atx_mcp_upsert" => {
+            let srv_name = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Missing required parameter 'name'"))?
+                .to_string();
+            let command = args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Missing required parameter 'command'"))?
+                .to_string();
+            let srv_args: Vec<String> = args
+                .get("args")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let env: HashMap<String, String> = args
+                .get("env")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let prefix = args
+                .get("prefix")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let enabled = args.get("enabled").and_then(|v| v.as_bool());
+
+            let mut cfg = Config::load_from_path(config_path)?;
+            cfg.mcp_servers.insert(
+                srv_name.clone(),
+                crate::config::McpServerConfig {
+                    command,
+                    args: srv_args,
+                    env,
+                    enabled,
+                    prefix,
+                    aliases: HashMap::new(),
+                },
+            );
+            cfg.save_to_path(config_path)?;
+
+            Ok(json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string_pretty(&json!({
+                        "success": true,
+                        "name": srv_name
+                    }))?
+                }]
+            }))
+        }
+        "atx_mcp_remove" => {
+            let srv_name = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("Missing required parameter 'name'"))?;
+            let mut cfg = Config::load_from_path(config_path)?;
+            let removed = cfg.mcp_servers.remove(srv_name).is_some();
+            cfg.save_to_path(config_path)?;
+            Ok(json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string_pretty(&json!({
+                        "success": removed,
+                        "name": srv_name
+                    }))?
+                }]
+            }))
+        }
+        _ => anyhow::bail!("Unknown management tool: {}", name),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_mcp_management_tools_connector_and_mcp_crud() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("atlas.db");
+        let cfg_path = dir.path().join("config.toml");
+
+        let mut cfg = Config::default();
+        cfg.general.db_path = db_path.to_string_lossy().to_string();
+        cfg.save_to_path(&cfg_path).unwrap();
+
+        let storage = Storage::new(&db_path).unwrap();
+        let hub = McpHub::new(storage).with_config_path(cfg_path.clone());
+
+        // 1. Schemas includes custom 'plugin'
+        let schemas_res = hub.route_tool_call("atx_connector_schemas", json!({})).await.unwrap();
+        let schemas_text = schemas_res["content"][0]["text"].as_str().unwrap();
+        assert!(schemas_text.contains("\"plugin\""));
+
+        // 2. Upsert custom plugin connector
+        let upsert_conn = hub
+            .route_tool_call(
+                "atx_connector_upsert",
+                json!({
+                    "id": "custom-erp",
+                    "provider": "plugin",
+                    "config": {
+                        "plugin_command": "sh",
+                        "plugin_args": ["-c", "read _; echo '{\"message\":\"OK\",\"artifacts\":[]}'"]
+                    }
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(upsert_conn["content"][0]["text"].as_str().unwrap().contains("\"success\": true"));
+
+        // 3. Sync custom plugin connector via atx_sync
+        let sync_res = hub
+            .route_tool_call("atx_sync", json!({ "connector_id": "custom-erp" }))
+            .await
+            .unwrap();
+        assert!(sync_res["content"][0]["text"].as_str().unwrap().contains("custom-erp"));
+
+        // 4. Upsert & list & remove custom MCP server
+        let upsert_mcp = hub
+            .route_tool_call(
+                "atx_mcp_upsert",
+                json!({
+                    "name": "my-custom-mcp",
+                    "command": "npx",
+                    "args": ["-y", "@acme/mcp-server"],
+                    "prefix": "acme",
+                    "enabled": true
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(upsert_mcp["content"][0]["text"].as_str().unwrap().contains("my-custom-mcp"));
+
+        let list_mcp = hub.route_tool_call("atx_mcp_list", json!({})).await.unwrap();
+        assert!(list_mcp["content"][0]["text"].as_str().unwrap().contains("my-custom-mcp"));
+
+        let remove_mcp = hub
+            .route_tool_call("atx_mcp_remove", json!({ "name": "my-custom-mcp" }))
+            .await
+            .unwrap();
+        assert!(remove_mcp["content"][0]["text"].as_str().unwrap().contains("\"success\": true"));
+
+        let remove_conn = hub
+            .route_tool_call("atx_connector_remove", json!({ "id": "custom-erp" }))
+            .await
+            .unwrap();
+        assert!(remove_conn["content"][0]["text"].as_str().unwrap().contains("\"success\": true"));
     }
 }

@@ -62,7 +62,7 @@ async fn test_status_and_schemas_and_cors() {
     let status_json: serde_json::Value = status_res.json().await.unwrap();
     assert_eq!(status_json["total_artifacts"], 1);
 
-    // 2. Connector schemas endpoint returns all 15 manifests
+    // 2. Connector schemas endpoint returns all 16 manifests (15 built-in + plugin)
     let schemas_res = client
         .get(format!("{}/api/connectors/schemas", base_url))
         .send()
@@ -70,7 +70,7 @@ async fn test_status_and_schemas_and_cors() {
         .unwrap();
     assert_eq!(schemas_res.status(), StatusCode::OK);
     let schemas: Vec<serde_json::Value> = schemas_res.json().await.unwrap();
-    assert_eq!(schemas.len(), 15);
+    assert_eq!(schemas.len(), 16);
 
     // 3. CORS allows localhost origin and blocks untrusted origin
     let allowed_cors = client

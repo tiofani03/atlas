@@ -10,6 +10,7 @@ import { SettingsPage } from './features/settings/SettingsPage';
 import { AboutPage } from './features/about/AboutPage';
 import { ChatPage } from './features/chat/ChatPage';
 import { McpHubPage } from './features/mcp/McpHubPage';
+import { TimelinePage } from './features/timeline/TimelinePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,6 +54,8 @@ export const App: React.FC = () => {
         return <McpHubPage />;
       case 'knowledge':
         return <ExplorerPage />;
+      case 'timeline':
+        return <TimelinePage />;
       case 'viewer':
         return <ExplorerPage initialViewMode="graph" />;
       case 'sync':

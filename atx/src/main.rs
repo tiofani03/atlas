@@ -219,6 +219,8 @@ async fn main() -> Result<()> {
             json,
             verbose,
             raw,
+            template,
+            export,
         } => {
             let mut cfg = Config::load_from_path(&config_path)?;
             let storage = Storage::new(cfg.resolve_db_path())?;
@@ -260,7 +262,11 @@ async fn main() -> Result<()> {
             }
             let pkg = builder.build(kind_param, id_param, &options)?;
 
-            if json {
+            if let Some(ref export_path) = export {
+                let md = atlas_core::render_context_markdown(&pkg, template.as_deref());
+                std::fs::write(export_path, &md)?;
+                println!("Context exported to {}", export_path);
+            } else if json {
                 let mut val = serde_json::to_value(&pkg)?;
                 if let Some((ref dkey, ref node)) = resolved_design_info {
                     val["figma"] = serde_json::json!({

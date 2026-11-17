@@ -143,6 +143,7 @@ dependencies = [
  "atlas-core",
  "axum",
  "chrono",
+ "futures",
  "mime_guess",
  "reqwest",
  "rust-embed",

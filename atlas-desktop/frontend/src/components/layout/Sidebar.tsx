@@ -8,6 +8,7 @@ import {
   Info,
   MessageSquareCode,
   Network,
+  Clock,
 } from 'lucide-react';
 
 import atlasLogo from '../../assets/logo.svg';
@@ -26,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'connectors', label: 'Connectors', icon: Plug },
     { id: 'mcp', label: 'MCP Hub', icon: Network },
     { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
+    { id: 'timeline', label: 'Timeline', icon: Clock },
     { id: 'sync', label: 'Sync Status', icon: RefreshCw },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'about', label: 'About', icon: Info },

@@ -1,6 +1,8 @@
+pub mod code_graph;
 pub mod config;
 pub mod connectors;
 pub mod context;
+pub mod context_templates;
 pub mod domain;
 pub mod embeddings;
 pub mod health;
@@ -12,7 +14,9 @@ pub mod storage;
 pub mod sync;
 pub mod watcher;
 
+pub use code_graph::CodeGraphExtractor;
 pub use config::{Config, ConnectorConfig, McpServerConfig};
+pub use context_templates::render_context_markdown;
 pub use secrets::SecretStore;
 pub use watcher::LocalPathWatcher;
 pub use mcp::{run_stdio_mcp_server, McpClient, McpHub};

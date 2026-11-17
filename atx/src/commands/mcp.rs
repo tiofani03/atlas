@@ -10,7 +10,9 @@ pub async fn handle(action: Option<McpSubcommands>, config_path: &Path) -> Resul
                 McpSubcommands::Serve => {
                     let cfg = Config::load_from_path(config_path)?;
                     let storage = Storage::new(cfg.resolve_db_path())?;
-                    let hub = McpHub::from_config(&cfg, storage).await?;
+                    let hub = McpHub::from_config(&cfg, storage)
+                        .await?
+                        .with_config_path(config_path.to_path_buf());
                     run_stdio_mcp_server(hub).await?;
                 }
 

@@ -2481,5 +2481,101 @@ impl Storage {
         )?;
         Ok(())
     }
+
+    /// Automatically link ADR/Document artifacts to OpenAPI Specification/Component artifacts
+    /// when the document body or title references an API path (e.g. `/api/users`) or spec title.
+    pub fn link_adr_to_api_artifacts(&self) -> Result<usize> {
+        let conn = self.get_connection()?;
+        let mut api_stmt = conn.prepare(
+            "SELECT id, source_id, title FROM knowledge_artifacts
+             WHERE LOWER(kind) IN ('specification', 'component')
+                OR LOWER(provider) = 'openapi'",
+        )?;
+        let api_rows: Vec<(String, String, String)> = api_stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        if api_rows.is_empty() {
+            return Ok(0);
+        }
+
+        let mut doc_stmt = conn.prepare(
+            "SELECT id, title, body FROM knowledge_artifacts
+             WHERE LOWER(kind) = 'document'",
+        )?;
+        let doc_rows: Vec<(String, String, String)> = doc_stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut ins_stmt = conn.prepare(
+            "INSERT INTO artifact_relationships (source_id, target_id, relationship_type)
+             VALUES (?1, ?2, 'references')
+             ON CONFLICT(source_id, target_id, relationship_type) DO NOTHING",
+        )?;
+
+        let mut linked = 0usize;
+        for (doc_id, doc_title, doc_body) in &doc_rows {
+            let haystack = format!("{}\n{}", doc_title, doc_body).to_lowercase();
+            for (api_id, api_source, api_title) in &api_rows {
+                // Extract candidate endpoint path like `/api/v1/users` from title or source_id
+                let path_token = api_title
+                    .split_whitespace()
+                    .find(|w| w.starts_with('/') && w.len() > 2)
+                    .or_else(|| {
+                        api_source
+                            .split(':')
+                            .next_back()
+                            .filter(|s| s.starts_with('/') && s.len() > 2)
+                    });
+                let title_lower = api_title.to_lowercase();
+                let matched = path_token
+                    .map(|p| haystack.contains(&p.to_lowercase()))
+                    .unwrap_or(false)
+                    || (title_lower.len() >= 6 && haystack.contains(&title_lower));
+
+                if matched {
+                    let changes = ins_stmt.execute(params![doc_id, api_id])?;
+                    linked += changes;
+                }
+            }
+        }
+        Ok(linked)
+    }
+
+    /// Query artifacts ordered chronologically (`COALESCE(created_at, updated_at) DESC`) for timeline views.
+    pub fn query_timeline(
+        &self,
+        kind: Option<&str>,
+        provider: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeArtifact>> {
+        let conn = self.get_connection()?;
+        let mut sql = String::from(
+            "SELECT id, kind, title, summary, body, provider, source_id, source_url,
+                    repository, tags, relationships, created_at, updated_at, synced_at,
+                    checksum, metadata
+             FROM knowledge_artifacts WHERE 1=1",
+        );
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(k) = kind.filter(|s| !s.trim().is_empty()) {
+            sql.push_str(" AND LOWER(kind) = LOWER(?)");
+            params_vec.push(Box::new(k.to_string()));
+        }
+        if let Some(p) = provider.filter(|s| !s.trim().is_empty()) {
+            sql.push_str(" AND LOWER(provider) = LOWER(?)");
+            params_vec.push(Box::new(p.to_string()));
+        }
+        sql.push_str(" ORDER BY COALESCE(created_at, updated_at) DESC LIMIT ?");
+        params_vec.push(Box::new(limit as i64));
+
+        let mut stmt = conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt.query_map(param_refs.as_slice(), Self::row_to_artifact)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
 }
 

@@ -9,7 +9,7 @@ type ProviderForm = { apiKey: string; endpointUrl: string; model: string };
 const providers: { id: Provider; name: string; description: string; link: string }[] = [
   { id: 'openai', name: 'OpenAI', description: 'Responses API', link: 'https://platform.openai.com/api-keys' },
   { id: 'anthropic', name: 'Anthropic', description: 'Messages API', link: 'https://platform.claude.com/settings/keys' },
-  { id: 'compatible', name: 'OpenAI-compatible', description: 'DeepSeek, Ollama, atau endpoint custom', link: 'https://platform.deepseek.com/api_keys' },
+  { id: 'compatible', name: 'OpenAI-compatible', description: 'DeepSeek, Gemini, OpenRouter, Ollama, atau endpoint custom', link: 'https://openrouter.ai/keys' },
 ];
 
 const initialForms: Record<Provider, ProviderForm> = {
