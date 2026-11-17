@@ -217,6 +217,14 @@ impl Storage {
                 PRIMARY KEY (connector_id, ref_name)
             );
 
+            CREATE TABLE IF NOT EXISTS artifact_embeddings (
+                artifact_id TEXT PRIMARY KEY,
+                model TEXT NOT NULL,
+                dimensions INTEGER NOT NULL,
+                embedding BLOB NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TRIGGER IF NOT EXISTS ka_ai AFTER INSERT ON knowledge_artifacts BEGIN
                 INSERT INTO knowledge_fts(id, title, summary, body, tags, repository, kind, provider, source_id)
                 VALUES (new.id, new.title, COALESCE(new.summary, ''), new.body, new.tags, COALESCE(new.repository, ''), new.kind, new.provider, new.source_id);
@@ -244,6 +252,7 @@ impl Storage {
              DELETE FROM artifact_relationships;
              DELETE FROM connectors_state;
              DELETE FROM knowledge_fts;
+             DELETE FROM artifact_embeddings;
              DELETE FROM git_ref_watermarks;
              DELETE FROM git_index_commits;
              DELETE FROM commit_files;
@@ -424,6 +433,16 @@ impl Storage {
                     insertions = excluded.insertions,
                     deletions = excluded.deletions",
             )?;
+            let mut ins_emb_stmt = tx.prepare_cached(
+                "INSERT INTO artifact_embeddings (artifact_id, model, dimensions, embedding, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(artifact_id) DO UPDATE SET
+                    model = excluded.model,
+                    dimensions = excluded.dimensions,
+                    embedding = excluded.embedding,
+                    updated_at = excluded.updated_at",
+            )?;
+            let local_embedder = crate::embeddings::LocalHashEmbedding::default();
 
             for artifact in artifacts {
                 let existing_checksum: Option<String> = check_stmt
@@ -462,6 +481,23 @@ impl Storage {
                     artifact.synced_at.to_rfc3339(),
                     artifact.checksum,
                     meta_json,
+                ])?;
+
+                let emb_text = format!(
+                    "{} {} {} {}",
+                    artifact.title,
+                    artifact.summary.as_deref().unwrap_or(""),
+                    artifact.tags.join(" "),
+                    artifact.body.chars().take(2000).collect::<String>()
+                );
+                let emb_vec = local_embedder.embed_sync(&emb_text);
+                let emb_blob = crate::embeddings::encode_f32_le(&emb_vec);
+                ins_emb_stmt.execute(params![
+                    artifact.id,
+                    "local-hash-v1",
+                    emb_vec.len() as i64,
+                    emb_blob,
+                    artifact.synced_at.to_rfc3339(),
                 ])?;
 
                 if artifact.kind != ArtifactKind::Release {
@@ -1356,6 +1392,101 @@ impl Storage {
     ) -> Result<Vec<KnowledgeArtifact>> {
         let (items, _) = self.search_fts_paginated(query, kind, None, tag, repository, limit, 0)?;
         Ok(items)
+    }
+
+    /// Semantic vector search over stored `artifact_embeddings` using cosine similarity.
+    pub fn search_semantic(
+        &self,
+        query: &str,
+        kind: Option<&str>,
+        provider: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeArtifact>> {
+        let embedder = crate::embeddings::LocalHashEmbedding::default();
+        let query_vec = embedder.embed_sync(query);
+        let conn = self.get_connection()?;
+
+        let mut sql = String::from(
+            "SELECT e.artifact_id, e.embedding
+             FROM artifact_embeddings e
+             JOIN knowledge_artifacts ka ON ka.id = e.artifact_id
+             WHERE 1=1",
+        );
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(k) = kind.filter(|s| !s.trim().is_empty()) {
+            sql.push_str(" AND LOWER(ka.kind) = LOWER(?)");
+            params_vec.push(Box::new(k.to_string()));
+        }
+        if let Some(p) = provider.filter(|s| !s.trim().is_empty()) {
+            sql.push_str(" AND LOWER(ka.provider) = LOWER(?)");
+            params_vec.push(Box::new(p.to_string()));
+        }
+
+        let mut stmt = conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            let id: String = row.get(0)?;
+            let blob: Vec<u8> = row.get(1)?;
+            Ok((id, blob))
+        })?;
+
+        let mut scored: Vec<(String, f32)> = Vec::new();
+        for row in rows {
+            let (id, blob) = row?;
+            let vec = crate::embeddings::decode_f32_le(&blob);
+            let sim = crate::embeddings::cosine_similarity(&query_vec, &vec);
+            if sim > 0.0 {
+                scored.push((id, sim));
+            }
+        }
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(limit);
+
+        let mut results = Vec::with_capacity(scored.len());
+        for (id, _) in scored {
+            if let Some(art) = self.get_artifact_by_id(&id)? {
+                results.push(art);
+            }
+        }
+        Ok(results)
+    }
+
+    /// Hybrid search combining FTS5 BM25 and semantic cosine similarity via Reciprocal Rank Fusion (RRF).
+    pub fn search_hybrid(
+        &self,
+        query: &str,
+        kind: Option<&str>,
+        provider: Option<&str>,
+        tag: Option<&str>,
+        repository: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeArtifact>> {
+        let fetch_limit = (limit * 3).max(20);
+        let (bm25_hits, _) =
+            self.search_fts_paginated(query, kind, provider, tag, repository, fetch_limit, 0)?;
+        let semantic_hits = self.search_semantic(query, kind, provider, fetch_limit)?;
+
+        if semantic_hits.is_empty() {
+            return Ok(bm25_hits.into_iter().take(limit).collect());
+        }
+
+        let bm25_ids: Vec<String> = bm25_hits.iter().map(|a| a.id.clone()).collect();
+        let vec_ids: Vec<String> = semantic_hits.iter().map(|a| a.id.clone()).collect();
+        let fused_ids = crate::embeddings::reciprocal_rank_fusion(&bm25_ids, &vec_ids, limit);
+
+        let mut by_id: std::collections::HashMap<String, KnowledgeArtifact> = bm25_hits
+            .into_iter()
+            .chain(semantic_hits)
+            .map(|a| (a.id.clone(), a))
+            .collect();
+
+        let mut results = Vec::with_capacity(fused_ids.len());
+        for id in fused_ids {
+            if let Some(art) = by_id.remove(&id) {
+                results.push(art);
+            }
+        }
+        Ok(results)
     }
 
     #[allow(clippy::too_many_arguments)]

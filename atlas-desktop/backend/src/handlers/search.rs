@@ -17,6 +17,7 @@ pub struct SearchQueryParams {
     pub repository: Option<String>,
     pub page: Option<usize>,
     pub limit: Option<usize>,
+    pub mode: Option<String>,
 }
 
 pub async fn search_objects(
@@ -41,16 +42,38 @@ pub async fn search_objects(
     let provider = params.provider.filter(|p| !p.trim().is_empty());
 
     let query_str = params.query.unwrap_or_default();
+    let mode = params.mode.as_deref().unwrap_or("bm25").to_lowercase();
     let results = if !query_str.trim().is_empty() {
-        storage.search_fts_paginated(
-            &query_str,
-            kind.as_deref(),
-            provider.as_deref(),
-            params.tag.as_deref(),
-            params.repository.as_deref(),
-            limit,
-            offset,
-        )
+        match mode.as_str() {
+            "semantic" => storage
+                .search_semantic(&query_str, kind.as_deref(), provider.as_deref(), limit)
+                .map(|items| {
+                    let total = items.len();
+                    (items, total)
+                }),
+            "hybrid" => storage
+                .search_hybrid(
+                    &query_str,
+                    kind.as_deref(),
+                    provider.as_deref(),
+                    params.tag.as_deref(),
+                    params.repository.as_deref(),
+                    limit,
+                )
+                .map(|items| {
+                    let total = items.len();
+                    (items, total)
+                }),
+            _ => storage.search_fts_paginated(
+                &query_str,
+                kind.as_deref(),
+                provider.as_deref(),
+                params.tag.as_deref(),
+                params.repository.as_deref(),
+                limit,
+                offset,
+            ),
+        }
     } else {
         storage.query_structured_paginated(
             kind.as_deref(),

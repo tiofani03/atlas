@@ -1,0 +1,69 @@
+/* Hallmark · tokens: Cobalt adapted to Atlas · scope: chat workspace */
+:root {
+  --chat-color-paper: oklch(98.5% 0.004 250);
+  --chat-color-panel: oklch(96.5% 0.008 252);
+  --chat-color-surface: oklch(100% 0 0);
+  --chat-color-surface-raised: oklch(99% 0.003 250);
+  --chat-color-ink: oklch(24% 0.02 258);
+  --chat-color-ink-soft: oklch(42% 0.022 257);
+  --chat-color-muted: oklch(53% 0.018 257);
+  --chat-color-rule: oklch(90% 0.012 252);
+  --chat-color-rule-strong: oklch(82% 0.025 254);
+  --chat-color-accent: oklch(55% 0.21 270);
+  --chat-color-accent-hover: oklch(49% 0.22 270);
+  --chat-color-accent-ink: oklch(99% 0.002 250);
+  --chat-color-accent-soft: oklch(95% 0.035 270);
+  --chat-color-user: oklch(94% 0.024 265);
+  --chat-color-success: oklch(48% 0.13 155);
+  --chat-color-success-soft: oklch(95% 0.035 155);
+  --chat-color-error: oklch(52% 0.19 25);
+  --chat-color-error-soft: oklch(96% 0.025 25);
+  --chat-color-overlay: oklch(18% 0.02 258 / 0.34);
+  --chat-color-shadow: oklch(24% 0.02 258 / 0.08);
+  --chat-font-display: "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif;
+  --chat-font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+  --chat-font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --chat-space-3xs: 0.25rem;
+  --chat-space-2xs: 0.5rem;
+  --chat-space-xs: 0.75rem;
+  --chat-space-sm: 1rem;
+  --chat-space-md: 1.5rem;
+  --chat-space-lg: 2rem;
+  --chat-space-xl: 3rem;
+  --chat-text-xs: 0.6875rem;
+  --chat-text-sm: 0.75rem;
+  --chat-text-md: 0.875rem;
+  --chat-text-lg: 1rem;
+  --chat-text-display: clamp(2rem, 4.5vw, 3.75rem);
+  --chat-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --chat-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --chat-duration-fast: 140ms;
+  --chat-duration-medium: 220ms;
+  --chat-radius-sm: 0.375rem;
+  --chat-radius-md: 0.625rem;
+  --chat-radius-lg: 0.875rem;
+  --chat-rule: 1px solid var(--chat-color-rule);
+}
+
+html.dark {
+  --chat-color-paper: oklch(16% 0.015 258);
+  --chat-color-panel: oklch(19% 0.017 258);
+  --chat-color-surface: oklch(21% 0.018 258);
+  --chat-color-surface-raised: oklch(24% 0.02 258);
+  --chat-color-ink: oklch(94% 0.012 252);
+  --chat-color-ink-soft: oklch(80% 0.018 252);
+  --chat-color-muted: oklch(68% 0.018 252);
+  --chat-color-rule: oklch(30% 0.02 258);
+  --chat-color-rule-strong: oklch(40% 0.035 260);
+  --chat-color-accent: oklch(70% 0.16 270);
+  --chat-color-accent-hover: oklch(76% 0.14 270);
+  --chat-color-accent-ink: oklch(16% 0.015 258);
+  --chat-color-accent-soft: oklch(27% 0.055 270);
+  --chat-color-user: oklch(25% 0.035 265);
+  --chat-color-success: oklch(72% 0.13 155);
+  --chat-color-success-soft: oklch(24% 0.04 155);
+  --chat-color-error: oklch(72% 0.15 25);
+  --chat-color-error-soft: oklch(24% 0.045 25);
+  --chat-color-overlay: oklch(8% 0.01 258 / 0.62);
+  --chat-color-shadow: oklch(5% 0.01 258 / 0.26);
+}

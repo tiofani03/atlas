@@ -9,6 +9,7 @@ pub mod gitlab;
 pub mod jira;
 pub mod linear;
 pub mod local_git;
+pub mod manifests;
 pub mod markdown;
 pub mod notion;
 pub mod openapi;

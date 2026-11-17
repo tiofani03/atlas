@@ -10,6 +10,8 @@ pub struct GeneralConfig {
     pub db_path: String,
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    #[serde(default)]
+    pub sync_interval_secs: Option<u64>,
 }
 
 impl Default for GeneralConfig {
@@ -17,6 +19,7 @@ impl Default for GeneralConfig {
         Self {
             db_path: default_db_path(),
             log_level: default_log_level(),
+            sync_interval_secs: None,
         }
     }
 }
@@ -122,14 +125,7 @@ impl ConnectorConfig {
         if let Some(ref token) = self.api_token {
             let trimmed = token.trim();
             if !trimmed.is_empty() {
-                if trimmed.starts_with("${") && trimmed.ends_with('}') {
-                    let var_name = &trimmed[2..trimmed.len() - 1];
-                    let val = std::env::var(var_name).with_context(|| {
-                        format!("Environment variable '{}' referenced by api_token is not set", var_name)
-                    })?;
-                    return Ok(val);
-                }
-                return Ok(trimmed.to_string());
+                return crate::secrets::SecretStore::resolve(trimmed);
             }
         }
         if let Some(ref env_var) = self.api_token_env {
@@ -157,7 +153,7 @@ impl ConnectorConfig {
     pub fn has_plaintext_secret(&self) -> bool {
         if let Some(ref token) = self.api_token {
             let trimmed = token.trim();
-            if !trimmed.is_empty() && !(trimmed.starts_with("${") && trimmed.ends_with('}')) {
+            if !trimmed.is_empty() && !crate::secrets::SecretStore::is_protected(trimmed) {
                 return true;
             }
         }
@@ -166,14 +162,9 @@ impl ConnectorConfig {
 
     pub fn redact_api_token(&self) -> Option<String> {
         if let Some(ref token) = self.api_token {
-            let trimmed = token.trim();
-            if trimmed.starts_with("${") && trimmed.ends_with('}') {
-                return Some(trimmed.to_string());
+            if let Some(redacted) = crate::secrets::SecretStore::redact(token) {
+                return Some(redacted);
             }
-            if trimmed.len() <= 4 {
-                return Some("****".to_string());
-            }
-            return Some(format!("{}...{}", &trimmed[..2], &trimmed[trimmed.len() - 2..]));
         }
         if let Some(ref env_var) = self.api_token_env {
             return Some(format!("${{{}}}", env_var));
@@ -237,6 +228,7 @@ impl Config {
         let content = toml::to_string_pretty(self).context("Failed to serialize config to TOML")?;
         fs::write(path, content)
             .with_context(|| format!("Failed to write config file at {:?}", path))?;
+        crate::secrets::SecretStore::set_restrictive_permissions(path)?;
         Ok(())
     }
 

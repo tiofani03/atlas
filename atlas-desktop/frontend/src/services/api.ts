@@ -25,6 +25,8 @@ import {
   McpSnippetResponse,
   GraphNodeData,
   GraphResponse,
+  ChatConfig,
+  ChatResponse,
 } from '../types';
 
 const API_BASE = '/api';
@@ -39,6 +41,31 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getChatConfig: () => fetchJson<ChatConfig>(`${API_BASE}/chat/config`),
+  saveChatConfig: (data: {
+    provider: 'openai' | 'anthropic' | 'compatible';
+    apiKey: string;
+    endpointUrl: string;
+    model: string;
+  }) =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/chat/keys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: data.provider,
+        api_key: data.apiKey,
+        endpoint_url: data.endpointUrl,
+        model: data.model,
+      }),
+    }),
+  deleteChatKey: (provider: 'openai' | 'anthropic' | 'compatible') =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/chat/keys/${provider}`, { method: 'DELETE' }),
+  sendChat: (data: { message: string; provider: 'openai' | 'anthropic' | 'compatible'; history: { role: 'user' | 'assistant'; content: string }[] }) =>
+    fetchJson<ChatResponse>(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
   getStatus: () => fetchJson<StatusInfo>(`${API_BASE}/status`),
   
   getConnectors: () => fetchJson<ConnectorInfo[]>(`${API_BASE}/connectors`),
@@ -143,6 +170,16 @@ export const api = {
 
   saveSpreadsheetConnector: (data: SpreadsheetConfigPayload) =>
     fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/spreadsheet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  getConnectorSchemas: () =>
+    fetchJson<import('../types').ConnectorManifest[]>(`${API_BASE}/connectors/schemas`),
+
+  saveConnectorGeneric: (provider: string, data: Record<string, unknown>) =>
+    fetchJson<{ success: boolean; id: string }>(`${API_BASE}/connectors/${encodeURIComponent(provider)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

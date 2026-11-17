@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { Settings, HardDrive, ShieldAlert, Sparkles, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ApiKeysSettings } from './ApiKeysSettings';
 
 export const SettingsPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -65,12 +66,14 @@ export const SettingsPage: React.FC = () => {
                 <span>Local-First Execution Model</span>
               </p>
               <p className="text-[11px] text-indigo-600/80 dark:text-indigo-300/80">
-                Atlas Desktop operates strictly as a localhost companion host. All settings modified via UI write directly to your local TOML file.
+                Atlas Desktop runs on localhost. Connector settings use the local TOML file; LLM endpoint, model, and API keys use a separate private local file.
               </p>
             </div>
           </div>
         </div>
       </div>
+
+      <ApiKeysSettings />
 
       {/* Danger Zone: Reset Database */}
       <div className="p-6 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 space-y-4 max-w-2xl shadow-xs">

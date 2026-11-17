@@ -26,9 +26,6 @@ export const App: React.FC = () => {
     return localStorage.getItem('theme') !== 'light';
   });
 
-  const [featureFlags, setFeatureFlags] = useState({
-    aiChat: false,
-  });
 
   useEffect(() => {
     if (isDarkMode) {
@@ -44,13 +41,6 @@ export const App: React.FC = () => {
 
   const handleToggleTheme = () => {
     setIsDarkMode((prev) => !prev);
-  };
-
-  const handleToggleFeature = (feature: 'aiChat') => {
-    setFeatureFlags((prev) => ({
-      ...prev,
-      [feature]: !prev[feature],
-    }));
   };
 
   const renderContent = () => {
@@ -72,7 +62,7 @@ export const App: React.FC = () => {
       case 'about':
         return <AboutPage />;
       case 'chat':
-        return featureFlags.aiChat ? <ChatPage /> : <DashboardPage />;
+        return <ChatPage onConfigure={() => setCurrentTab('settings')} />;
       default:
         return <DashboardPage />;
     }
@@ -84,8 +74,6 @@ export const App: React.FC = () => {
         <Sidebar
           currentTab={currentTab}
           onTabChange={setCurrentTab}
-          featureFlags={featureFlags}
-          onToggleFeature={handleToggleFeature}
         />
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
           <Header

@@ -1,21 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import { ConfigureJiraModal } from './ConfigureJiraModal';
-import { ConfigureConfluenceModal } from './ConfigureConfluenceModal';
-import { ConfigureGithubModal } from './ConfigureGithubModal';
-import { ConfigureMarkdownModal } from './ConfigureMarkdownModal';
-import { ConfigureLocalGitModal } from './ConfigureLocalGitModal';
-import { ConfigureClickupModal } from './ConfigureClickupModal';
-import { ConfigureLinearModal } from './ConfigureLinearModal';
-import { ConfigureGitlabModal } from './ConfigureGitlabModal';
-import { ConfigureOpenapiModal } from './ConfigureOpenapiModal';
-import { ConfigureAzureDevopsModal } from './ConfigureAzureDevopsModal';
-import { ConfigureBitbucketModal } from './ConfigureBitbucketModal';
-import { ConfigureFigmaModal } from './ConfigureFigmaModal';
-import { ConfigureNotionModal } from './ConfigureNotionModal';
-import { ConfigureAsanaModal } from './ConfigureAsanaModal';
-import { ConfigureSpreadsheetModal } from './ConfigureSpreadsheetModal';
+import { DynamicConnectorModal } from './DynamicConnectorModal';
 import {
   RefreshCw,
   Settings2,
@@ -225,21 +211,11 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({
 
 export const ConnectorsPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [isJiraOpen, setIsJiraOpen] = useState(false);
-  const [isConfluenceOpen, setIsConfluenceOpen] = useState(false);
-  const [isGithubOpen, setIsGithubOpen] = useState(false);
-  const [isMarkdownOpen, setIsMarkdownOpen] = useState(false);
-  const [isLocalGitOpen, setIsLocalGitOpen] = useState(false);
-  const [isClickupOpen, setIsClickupOpen] = useState(false);
-  const [isLinearOpen, setIsLinearOpen] = useState(false);
-  const [isGitlabOpen, setIsGitlabOpen] = useState(false);
-  const [isOpenapiOpen, setIsOpenapiOpen] = useState(false);
-  const [isAzureDevopsOpen, setIsAzureDevopsOpen] = useState(false);
-  const [isBitbucketOpen, setIsBitbucketOpen] = useState(false);
-  const [isFigmaOpen, setIsFigmaOpen] = useState(false);
-  const [isNotionOpen, setIsNotionOpen] = useState(false);
-  const [isAsanaOpen, setIsAsanaOpen] = useState(false);
-  const [isSpreadsheetOpen, setIsSpreadsheetOpen] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
+  const { data: connectorSchemas } = useQuery({
+    queryKey: ['connectorSchemas'],
+    queryFn: api.getConnectorSchemas,
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -452,7 +428,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsJiraOpen(true)}
+              onConfigure={() => setActiveProvider('jira')}
               onSync={() => jiraConfig && syncMutation.mutate(jiraConfig.id)}
               onClearData={() => jiraConfig && setDeleteTarget({ id: jiraConfig.id, name: 'Jira Software' })}
               isSyncing={syncProgress?.is_running}
@@ -479,7 +455,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsLinearOpen(true)}
+              onConfigure={() => setActiveProvider('linear')}
               onSync={() => linearConfig && syncMutation.mutate(linearConfig.id)}
               onClearData={() => linearConfig && setDeleteTarget({ id: linearConfig.id, name: 'Linear' })}
               isSyncing={syncProgress?.is_running}
@@ -506,7 +482,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsAsanaOpen(true)}
+              onConfigure={() => setActiveProvider('asana')}
               onSync={() => asanaConfig && syncMutation.mutate(asanaConfig.id)}
               onClearData={() => asanaConfig && setDeleteTarget({ id: asanaConfig.id, name: 'Asana' })}
               isSyncing={syncProgress?.is_running}
@@ -533,7 +509,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsClickupOpen(true)}
+              onConfigure={() => setActiveProvider('clickup')}
               onSync={() => clickupConfig && syncMutation.mutate(clickupConfig.id)}
               onClearData={() => clickupConfig && setDeleteTarget({ id: clickupConfig.id, name: 'ClickUp' })}
               isSyncing={syncProgress?.is_running}
@@ -579,7 +555,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsLocalGitOpen(true)}
+              onConfigure={() => setActiveProvider('local_git')}
               onSync={() => localGitConfig && syncMutation.mutate(localGitConfig.id)}
               onClearData={() => localGitConfig && setDeleteTarget({ id: localGitConfig.id, name: 'Local Git Repository' })}
               isSyncing={syncProgress?.is_running}
@@ -606,7 +582,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsGithubOpen(true)}
+              onConfigure={() => setActiveProvider('github')}
               onSync={() => githubConfig && syncMutation.mutate(githubConfig.id)}
               onClearData={() => githubConfig && setDeleteTarget({ id: githubConfig.id, name: 'GitHub' })}
               isSyncing={syncProgress?.is_running}
@@ -633,7 +609,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsAzureDevopsOpen(true)}
+              onConfigure={() => setActiveProvider('azure_devops')}
               onSync={() => azureDevopsConfig && syncMutation.mutate(azureDevopsConfig.id)}
               onClearData={() => azureDevopsConfig && setDeleteTarget({ id: azureDevopsConfig.id, name: 'Azure DevOps' })}
               isSyncing={syncProgress?.is_running}
@@ -660,7 +636,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsGitlabOpen(true)}
+              onConfigure={() => setActiveProvider('gitlab')}
               onSync={() => gitlabConfig && syncMutation.mutate(gitlabConfig.id)}
               onClearData={() => gitlabConfig && setDeleteTarget({ id: gitlabConfig.id, name: 'GitLab' })}
               isSyncing={syncProgress?.is_running}
@@ -687,7 +663,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsBitbucketOpen(true)}
+              onConfigure={() => setActiveProvider('bitbucket')}
               onSync={() => bitbucketConfig && syncMutation.mutate(bitbucketConfig.id)}
               onClearData={() => bitbucketConfig && setDeleteTarget({ id: bitbucketConfig.id, name: 'Bitbucket' })}
               isSyncing={syncProgress?.is_running}
@@ -744,7 +720,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsOpenapiOpen(true)}
+              onConfigure={() => setActiveProvider('openapi')}
               onSync={() => openapiConfig && syncMutation.mutate(openapiConfig.id)}
               onClearData={() => openapiConfig && setDeleteTarget({ id: openapiConfig.id, name: 'OpenAPI / Postman' })}
               isSyncing={syncProgress?.is_running}
@@ -771,7 +747,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsFigmaOpen(true)}
+              onConfigure={() => setActiveProvider('figma')}
               onSync={() => figmaConfig && syncMutation.mutate(figmaConfig.id)}
               onClearData={() => figmaConfig && setDeleteTarget({ id: figmaConfig.id, name: 'Figma Specs' })}
               isSyncing={syncProgress?.is_running}
@@ -817,7 +793,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsConfluenceOpen(true)}
+              onConfigure={() => setActiveProvider('confluence')}
               onSync={() => confluenceConfig && syncMutation.mutate(confluenceConfig.id)}
               onClearData={() => confluenceConfig && setDeleteTarget({ id: confluenceConfig.id, name: 'Confluence' })}
               isSyncing={syncProgress?.is_running}
@@ -844,7 +820,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsNotionOpen(true)}
+              onConfigure={() => setActiveProvider('notion')}
               onSync={() => notionConfig && syncMutation.mutate(notionConfig.id)}
               onClearData={() => notionConfig && setDeleteTarget({ id: notionConfig.id, name: 'Notion Workspace' })}
               isSyncing={syncProgress?.is_running}
@@ -871,7 +847,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsMarkdownOpen(true)}
+              onConfigure={() => setActiveProvider('markdown')}
               onSync={() => markdownConfig && syncMutation.mutate(markdownConfig.id)}
               onClearData={() => markdownConfig && setDeleteTarget({ id: markdownConfig.id, name: 'Local Markdown & ADRs' })}
               isSyncing={syncProgress?.is_running}
@@ -898,7 +874,7 @@ export const ConnectorsPage: React.FC = () => {
                     }
                   : undefined
               }
-              onConfigure={() => setIsSpreadsheetOpen(true)}
+              onConfigure={() => setActiveProvider('spreadsheet')}
               onSync={() => spreadsheetConfig && syncMutation.mutate(spreadsheetConfig.id)}
               onClearData={() => spreadsheetConfig && setDeleteTarget({ id: spreadsheetConfig.id, name: 'Spreadsheets & CSV' })}
               isSyncing={syncProgress?.is_running}
@@ -909,158 +885,13 @@ export const ConnectorsPage: React.FC = () => {
       )}
 
       {/* Modals */}
-      <ConfigureJiraModal
-        isOpen={isJiraOpen}
-        onClose={() => setIsJiraOpen(false)}
+      {/* Schema-Driven Configuration Modal */}
+      <DynamicConnectorModal
+        isOpen={Boolean(activeProvider)}
+        manifest={connectorSchemas?.find((m) => m.provider === activeProvider) || null}
+        initialConnector={activeProvider ? connectors?.find((c) => c.provider === activeProvider) : undefined}
+        onClose={() => setActiveProvider(null)}
         onSuccess={() => refetch()}
-        initialConfig={jiraConfig ? {
-          id: jiraConfig.id,
-          instance_url: jiraConfig.instance_url,
-          email: jiraConfig.email,
-          projects: jiraConfig.projects,
-        } : undefined}
-      />
-      <ConfigureConfluenceModal
-        isOpen={isConfluenceOpen}
-        onClose={() => setIsConfluenceOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={confluenceConfig ? {
-          id: confluenceConfig.id,
-          instance_url: confluenceConfig.instance_url,
-          email: confluenceConfig.email,
-          spaces: confluenceConfig.spaces,
-        } : undefined}
-      />
-      <ConfigureGithubModal
-        isOpen={isGithubOpen}
-        onClose={() => setIsGithubOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={githubConfig ? {
-          id: githubConfig.id,
-          instance_url: githubConfig.instance_url,
-          repos: githubConfig.repos,
-        } : undefined}
-      />
-      <ConfigureMarkdownModal
-        isOpen={isMarkdownOpen}
-        onClose={() => setIsMarkdownOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={markdownConfig ? {
-          id: markdownConfig.id,
-          path: markdownConfig.path,
-          glob_patterns: markdownConfig.glob_patterns,
-        } : undefined}
-      />
-      <ConfigureLocalGitModal
-        isOpen={isLocalGitOpen}
-        onClose={() => setIsLocalGitOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={localGitConfig ? {
-          id: localGitConfig.id,
-          path: localGitConfig.path,
-          paths: localGitConfig.paths,
-        } : undefined}
-      />
-      <ConfigureClickupModal
-        isOpen={isClickupOpen}
-        onClose={() => setIsClickupOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={clickupConfig ? {
-          id: clickupConfig.id,
-          instance_url: clickupConfig.instance_url,
-          workspace: clickupConfig.workspace,
-          spaces: clickupConfig.spaces,
-          lists: clickupConfig.lists,
-        } : undefined}
-      />
-      <ConfigureLinearModal
-        isOpen={isLinearOpen}
-        onClose={() => setIsLinearOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={linearConfig ? {
-          id: linearConfig.id,
-          instance_url: linearConfig.instance_url,
-          workspace: linearConfig.workspace,
-          teams: linearConfig.spaces,
-        } : undefined}
-      />
-      <ConfigureGitlabModal
-        isOpen={isGitlabOpen}
-        onClose={() => setIsGitlabOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={gitlabConfig ? {
-          id: gitlabConfig.id,
-          instance_url: gitlabConfig.instance_url,
-          projects: gitlabConfig.projects,
-        } : undefined}
-      />
-      <ConfigureOpenapiModal
-        isOpen={isOpenapiOpen}
-        onClose={() => setIsOpenapiOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={openapiConfig ? {
-          id: openapiConfig.id,
-          path: openapiConfig.path,
-          paths: openapiConfig.paths,
-        } : undefined}
-      />
-      <ConfigureAzureDevopsModal
-        isOpen={isAzureDevopsOpen}
-        onClose={() => setIsAzureDevopsOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={azureDevopsConfig ? {
-          id: azureDevopsConfig.id,
-          instance_url: azureDevopsConfig.instance_url,
-          projects: azureDevopsConfig.projects,
-        } : undefined}
-      />
-      <ConfigureBitbucketModal
-        isOpen={isBitbucketOpen}
-        onClose={() => setIsBitbucketOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={bitbucketConfig ? {
-          id: bitbucketConfig.id,
-          instance_url: bitbucketConfig.instance_url,
-          email: bitbucketConfig.email,
-        } : undefined}
-      />
-      <ConfigureFigmaModal
-        isOpen={isFigmaOpen}
-        onClose={() => setIsFigmaOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={figmaConfig ? {
-          id: figmaConfig.id,
-          file_keys: figmaConfig.repos,
-        } : undefined}
-      />
-      <ConfigureNotionModal
-        isOpen={isNotionOpen}
-        onClose={() => setIsNotionOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={notionConfig ? {
-          id: notionConfig.id,
-          database_ids: notionConfig.spaces,
-        } : undefined}
-      />
-      <ConfigureAsanaModal
-        isOpen={isAsanaOpen}
-        onClose={() => setIsAsanaOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={asanaConfig ? {
-          id: asanaConfig.id,
-          workspace: asanaConfig.workspace,
-          projects: asanaConfig.projects,
-        } : undefined}
-      />
-      <ConfigureSpreadsheetModal
-        isOpen={isSpreadsheetOpen}
-        onClose={() => setIsSpreadsheetOpen(false)}
-        onSuccess={() => refetch()}
-        initialConfig={spreadsheetConfig ? {
-          id: spreadsheetConfig.id,
-          path: spreadsheetConfig.path,
-          paths: spreadsheetConfig.paths,
-        } : undefined}
       />
 
       {/* Delete / Clear Connector Confirmation Modal */}

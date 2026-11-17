@@ -43,6 +43,31 @@ pub struct AuthConfigSchema {
     pub required_fields: Vec<String>,
 }
 
+/// Field input type for schema-driven connector configuration UIs
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigFieldType {
+    Text,
+    Password,
+    Url,
+    Path,
+    List,
+    Boolean,
+}
+
+/// Declarative configuration field metadata for a connector
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ConfigFieldSchema {
+    pub key: String,
+    pub label: String,
+    pub field_type: ConfigFieldType,
+    pub required: bool,
+    #[serde(default)]
+    pub placeholder: String,
+    #[serde(default)]
+    pub help_text: String,
+}
+
 /// Connector Plugin Manifest
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectorManifest {
@@ -53,6 +78,8 @@ pub struct ConnectorManifest {
     pub description: String,
     pub capabilities: CapabilityMatrix,
     pub auth_schema: AuthConfigSchema,
+    #[serde(default)]
+    pub config_fields: Vec<ConfigFieldSchema>,
 }
 
 /// Durable Checkpoint Cursor stored in SQLite/PostgreSQL
@@ -143,6 +170,7 @@ impl<C: Connector + 'static> ConnectorV1Adapter<C> {
                 auth_type: "token".to_string(),
                 required_fields: vec!["api_token".to_string()],
             },
+            config_fields: Vec::new(),
         };
 
         Self {
