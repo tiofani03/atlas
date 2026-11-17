@@ -1,7 +1,7 @@
 use atlas_core::{Config, Storage};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct ActiveSyncProgress {
@@ -23,6 +23,7 @@ pub struct ActiveSyncProgress {
 pub struct AppState {
     pub config_path: PathBuf,
     pub sync_progress: Arc<RwLock<ActiveSyncProgress>>,
+    pub chat_keys_lock: Arc<Mutex<()>>,
 }
 
 impl AppState {
@@ -30,6 +31,7 @@ impl AppState {
         Self {
             config_path,
             sync_progress: Arc::new(RwLock::new(ActiveSyncProgress::default())),
+            chat_keys_lock: Arc::new(Mutex::new(())),
         }
     }
 

@@ -159,6 +159,24 @@ The detached service is available at **`http://localhost:31415`**. The separate 
 - 📑 **Knowledge Explorer**: Seamlessly switch between `Table` and `Graph` views to filter, search, and inspect engineering artifacts.
 - 🔌 **Live Connector Management**: Configure and validate 14+ connectors (GitHub, Jira, Confluence, Local Git, Notion, OpenAPI, etc.) with real-time path/credential checks.
 - 🤖 **MCP Hub Visualizer**: Configure, monitor, and test upstream Model Context Protocol tools.
+- 💬 **AI Chat**: Ask questions over indexed Atlas artifacts using OpenAI, Anthropic, or an OpenAI-compatible endpoint, with source references.
+
+### AI Chat setup
+
+Open **Settings → Konfigurasi LLM** to configure the endpoint URL, model, and API key for OpenAI, Anthropic, or an OpenAI-compatible provider. Atlas stores UI-entered configuration in `~/.config/atlas/chat-keys.json` (owner-only permissions on Unix), never returns API keys to the browser, and lets you replace or remove keys there. **AI Chat** stays at the bottom of the sidebar.
+
+Default endpoint URLs are provided as editable starting values. For DeepSeek or another compatible provider, enter the complete Chat Completions endpoint, for example `https://api.deepseek.com/chat/completions`. Atlas sends requests to the URL exactly as configured; HTTPS is required except for localhost HTTP endpoints. Chat only selects the provider—the endpoint and model are managed in Settings. You can also provide `DEEPSEEK_API_KEY` through the server environment. Chat history is stored in this browser's local storage.
+
+You can also set a key in the backend process environment before starting Atlas. UI-saved keys take precedence over environment keys.
+
+```bash
+export OPENAI_API_KEY="your-key"
+# or: export ANTHROPIC_API_KEY="your-key"
+make desktop-build
+make desktop
+```
+
+Optional default models can be set with `ATLAS_OPENAI_MODEL`, `ATLAS_ANTHROPIC_MODEL`, and `ATLAS_COMPATIBLE_MODEL`; values saved in Settings take precedence. Chat searches the local Atlas database first, sends up to six matching artifacts to the selected provider, and returns source references. When no artifacts match, it reports that without calling the provider. Provider requests may send indexed artifact content to that provider; avoid using a cloud provider for data that must stay local.
 
 ---
 

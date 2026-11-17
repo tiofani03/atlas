@@ -45,11 +45,7 @@ impl From<&KnowledgeArtifact> for NormalizedArtifactJson {
             .map(|s| s.to_string())
             .or_else(|| {
                 art.summary.as_ref().and_then(|sum| {
-                    if sum.starts_with("Status: ") {
-                        Some(sum["Status: ".len()..].trim().to_string())
-                    } else {
-                        None
-                    }
+                    sum.strip_prefix("Status: ").map(|rest| rest.trim().to_string())
                 })
             });
 

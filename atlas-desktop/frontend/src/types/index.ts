@@ -78,12 +78,59 @@ export interface KnowledgeArtifact {
 
 export type KnowledgeObject = KnowledgeArtifact;
 
+export interface ChatSource {
+  id: string;
+  title: string;
+  kind: string;
+  url: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  sources: ChatSource[];
+}
+
+export interface ChatConfig {
+  openai: boolean;
+  anthropic: boolean;
+  compatible: boolean;
+  openai_source: 'saved' | 'environment' | null;
+  anthropic_source: 'saved' | 'environment' | null;
+  compatible_source: 'saved' | 'environment' | null;
+  openai_endpoint_url: string;
+  anthropic_endpoint_url: string;
+  compatible_endpoint_url: string;
+  openai_model: string;
+  anthropic_model: string;
+  compatible_model: string;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
   page: number;
   limit: number;
   total_pages: number;
+}
+
+export type ConfigFieldType = 'text' | 'password' | 'url' | 'path' | 'list' | 'boolean';
+
+export interface ConfigFieldSchema {
+  key: string;
+  label: string;
+  field_type: ConfigFieldType;
+  required: boolean;
+  placeholder: string;
+  help_text: string;
+}
+
+export interface ConnectorManifest {
+  id: string;
+  provider: string;
+  version: string;
+  name: string;
+  description: string;
+  config_fields: ConfigFieldSchema[];
 }
 
 export interface JiraConfigPayload {

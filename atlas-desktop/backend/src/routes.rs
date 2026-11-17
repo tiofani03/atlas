@@ -1,11 +1,12 @@
-use crate::handlers::{connectors, graph, mcp, search, status, sync};
+use crate::handlers::{chat, connectors, graph, mcp, search, status, sync, webhooks};
 use crate::state::AppState;
 use axum::{
+    http::{header, HeaderValue, Method},
     routing::{delete, get, post},
     Router,
 };
 use std::path::{Path, PathBuf};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 
 pub fn find_frontend_dist() -> Option<PathBuf> {
@@ -45,18 +46,56 @@ pub fn find_frontend_dist() -> Option<PathBuf> {
     None
 }
 
+fn is_allowed_origin(origin: &HeaderValue, _parts: &axum::http::request::Parts) -> bool {
+    let Ok(origin_str) = origin.to_str() else {
+        return false;
+    };
+    if let Ok(extra) = std::env::var("ATLAS_ALLOWED_ORIGINS") {
+        if extra
+            .split(',')
+            .map(str::trim)
+            .any(|allowed| !allowed.is_empty() && allowed == origin_str)
+        {
+            return true;
+        }
+    }
+    let without_scheme = origin_str
+        .strip_prefix("http://")
+        .or_else(|| origin_str.strip_prefix("https://"))
+        .unwrap_or("");
+    let host = without_scheme
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("");
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+        || without_scheme.starts_with("[::1]")
+}
+
 pub fn create_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::predicate(is_allowed_origin))
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     let mut router = Router::new()
         .route("/api/status", get(status::get_status))
+        .route("/api/chat/config", get(chat::get_config))
+        .route("/api/chat", post(chat::send_message))
+        .route("/api/chat/keys", post(chat::save_key))
+        .route("/api/chat/keys/:provider", delete(chat::delete_key))
         .route("/api/storage/clear", post(status::clear_data))
-        .route("/api/clear", post(status::clear_data))
-        .route("/api/data/clear", post(status::clear_data))
         .route("/api/connectors", get(connectors::list_connectors))
+        .route(
+            "/api/connectors/schemas",
+            get(connectors::get_connector_schemas),
+        )
+        .route(
+            "/api/connectors/:provider",
+            post(connectors::save_connector_generic),
+        )
         .route(
             "/api/connectors/jira",
             post(connectors::save_jira_connector),
@@ -128,6 +167,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/connectors/delete", post(connectors::delete_connector))
         .route("/api/sync", post(sync::trigger_sync))
         .route("/api/sync/status", get(sync::get_sync_status))
+        .route("/api/webhooks/:provider", post(webhooks::handle_webhook))
         .route("/api/search", get(search::search_objects))
         .route("/api/objects/:id", get(search::get_object_by_id))
         .route("/api/context/:id", get(search::get_context))
@@ -146,7 +186,10 @@ pub fn create_router(state: AppState) -> Router {
 
     if let Some(dist_dir) = find_frontend_dist() {
         let index_file = dist_dir.join("index.html");
-        tracing::info!("Serving Atlas Desktop static frontend from disk: {:?}", dist_dir);
+        tracing::info!(
+            "Serving Atlas Desktop static frontend from disk: {:?}",
+            dist_dir
+        );
         let serve_dir = ServeDir::new(&dist_dir).fallback(ServeFile::new(index_file));
         router = router.fallback_service(serve_dir);
     } else {
@@ -188,11 +231,7 @@ pub async fn static_handler(uri: axum::http::Uri) -> axum::response::Response {
                 )
                     .into_response()
             } else {
-                (
-                    axum::http::StatusCode::NOT_FOUND,
-                    "404 Not Found",
-                )
-                    .into_response()
+                (axum::http::StatusCode::NOT_FOUND, "404 Not Found").into_response()
             }
         }
     }

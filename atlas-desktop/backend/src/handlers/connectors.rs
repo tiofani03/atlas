@@ -1,6 +1,11 @@
 use crate::state::AppState;
-use atlas_core::ConnectorConfig;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use atlas_core::{all_connector_manifests, ConnectorConfig, ConnectorInstance};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
@@ -1046,6 +1051,103 @@ pub async fn delete_connector(
             "success": true,
             "id": payload.id,
             "cleared_artifacts": cleared_count
+        })),
+    )
+}
+
+pub async fn get_connector_schemas() -> impl IntoResponse {
+    let manifests = all_connector_manifests();
+    (StatusCode::OK, Json(manifests))
+}
+
+#[derive(Deserialize)]
+pub struct GenericConnectorPayload {
+    pub id: String,
+    #[serde(flatten)]
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+
+pub async fn save_connector_generic(
+    State(state): State<AppState>,
+    Path(provider): Path<String>,
+    Json(payload): Json<GenericConnectorPayload>,
+) -> impl IntoResponse {
+    let provider_lower = provider.to_lowercase();
+    let manifests = all_connector_manifests();
+    if !manifests.iter().any(|m| m.provider == provider_lower) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": format!("Unsupported connector provider '{}'", provider) })),
+        );
+    }
+
+    let mut cfg = match state.load_config() {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err.to_string() })),
+            );
+        }
+    };
+
+    let existing = cfg.connectors.get(&payload.id).cloned();
+    let mut fields_val = serde_json::Value::Object(payload.fields);
+    if let Some(obj) = fields_val.as_object_mut() {
+        obj.insert(
+            "provider".to_string(),
+            serde_json::Value::String(provider_lower.clone()),
+        );
+    }
+
+    let mut conn_cfg: ConnectorConfig = match serde_json::from_value(fields_val) {
+        Ok(c) => c,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Invalid connector payload: {}", err) })),
+            );
+        }
+    };
+    conn_cfg.provider = provider_lower;
+
+    // Preserve existing token if omitted or blank during edit
+    if conn_cfg
+        .api_token
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
+        if let Some(prev) = existing {
+            conn_cfg.api_token = prev.api_token;
+            if conn_cfg.api_token_env.is_none() {
+                conn_cfg.api_token_env = prev.api_token_env;
+            }
+        }
+    }
+
+    // Validate that ConnectorInstance can be built from this config
+    if let Err(err) = ConnectorInstance::build(&payload.id, &conn_cfg) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    cfg.connectors.insert(payload.id.clone(), conn_cfg);
+    if let Err(err) = cfg.save_to_path(&state.config_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "id": payload.id
         })),
     )
 }

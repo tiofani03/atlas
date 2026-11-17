@@ -2,20 +2,26 @@ pub mod config;
 pub mod connectors;
 pub mod context;
 pub mod domain;
+pub mod embeddings;
 pub mod health;
 pub mod mcp;
 pub mod progress;
 pub mod resilience;
+pub mod secrets;
 pub mod storage;
 pub mod sync;
+pub mod watcher;
 
 pub use config::{Config, ConnectorConfig, McpServerConfig};
+pub use secrets::SecretStore;
+pub use watcher::LocalPathWatcher;
 pub use mcp::{run_stdio_mcp_server, McpClient, McpHub};
 pub use connectors::{
     asana::AsanaConnector, azure_devops::AzureDevopsConnector, bitbucket::BitbucketConnector,
     clickup::ClickupConnector, confluence::ConfluenceConnector, figma::FigmaConnector,
     github::GithubConnector, gitlab::GitlabConnector, jira::JiraConnector, linear::LinearConnector,
     local_git::{LocalGitConnector, LocalGitRepository, RepositoryRegistry},
+    manifests::all_connector_manifests,
     markdown::MarkdownConnector, notion::NotionConnector, openapi::OpenapiConnector,
     spreadsheet::SpreadsheetConnector, Connector, ConnectorInstance,
 };
