@@ -3,8 +3,11 @@ use atlas_core::KnowledgeArtifact;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    response::sse::{Event, KeepAlive, Sse},
     Json,
 };
+use futures::stream::{self, Stream};
+use std::convert::Infallible;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -811,6 +814,34 @@ pub async fn send_message(
             )
         })?;
     Ok(Json(ChatResponse { answer, sources }))
+}
+
+/// SSE streaming endpoint for AI Chat (`POST /api/chat/stream`).
+pub async fn send_message_stream(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ChatRequest>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
+    let Json(resp) = send_message(State(state), headers, Json(request)).await?;
+    let words: Vec<String> = resp
+        .answer
+        .split_inclusive(char::is_whitespace)
+        .map(|s| s.to_string())
+        .collect();
+    let sources_json = serde_json::to_value(&resp.sources).unwrap_or(json!([]));
+
+    let mut events: Vec<Result<Event, Infallible>> = words
+        .into_iter()
+        .map(|chunk| {
+            let payload = json!({ "delta": chunk }).to_string();
+            Ok(Event::default().data(payload))
+        })
+        .collect();
+    events.push(Ok(
+        Event::default().data(json!({ "done": true, "sources": sources_json }).to_string())
+    ));
+
+    Ok(Sse::new(stream::iter(events)).keep_alive(KeepAlive::default()))
 }
 
 #[cfg(test)]

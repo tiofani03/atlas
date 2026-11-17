@@ -144,6 +144,14 @@ pub(crate) enum Commands {
         /// Output raw unformatted database records
         #[arg(long)]
         raw: bool,
+
+        /// Context Markdown template name (default, pr-review, incident, onboarding, or custom)
+        #[arg(long)]
+        template: Option<String>,
+
+        /// Export rendered Markdown context to file path
+        #[arg(long)]
+        export: Option<String>,
     },
 
     /// Query engineering artifacts belonging to a specific repository

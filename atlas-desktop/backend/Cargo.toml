@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 atlas-core = { path = "../../atlas-core" }
 axum = "0.7"
+futures = "0.3"
 tokio = { version = "1.38", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 serde = { version = "1.0", features = ["derive"] }
