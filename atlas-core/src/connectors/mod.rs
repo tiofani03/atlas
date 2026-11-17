@@ -13,6 +13,7 @@ pub mod manifests;
 pub mod markdown;
 pub mod notion;
 pub mod openapi;
+pub mod plugin;
 pub mod spreadsheet;
 pub mod v2;
 
@@ -34,6 +35,7 @@ use local_git::LocalGitConnector;
 use markdown::MarkdownConnector;
 use notion::NotionConnector;
 use openapi::OpenapiConnector;
+use plugin::ExternalPluginConnector;
 use spreadsheet::SpreadsheetConnector;
 
 #[async_trait::async_trait]
@@ -69,6 +71,7 @@ pub enum ConnectorInstance {
     Figma(FigmaConnector),
     Notion(NotionConnector),
     Spreadsheet(SpreadsheetConnector),
+    Plugin(ExternalPluginConnector),
 }
 
 impl ConnectorInstance {
@@ -90,6 +93,7 @@ impl ConnectorInstance {
             "figma" => Ok(Self::Figma(FigmaConnector::new(id.to_string(), cfg.clone())?)),
             "notion" => Ok(Self::Notion(NotionConnector::new(id.to_string(), cfg.clone())?)),
             "spreadsheet" | "google_spreadsheet" => Ok(Self::Spreadsheet(SpreadsheetConnector::new(id.to_string(), cfg.clone())?)),
+            "plugin" => Ok(Self::Plugin(ExternalPluginConnector::new(id.to_string(), cfg.clone())?)),
             other => bail!("Unsupported connector provider '{}'", other),
         }
     }
@@ -114,6 +118,7 @@ impl Connector for ConnectorInstance {
             ConnectorInstance::Figma(c) => c.id(),
             ConnectorInstance::Notion(c) => c.id(),
             ConnectorInstance::Spreadsheet(c) => c.id(),
+            ConnectorInstance::Plugin(c) => c.id(),
         }
     }
 
@@ -134,6 +139,7 @@ impl Connector for ConnectorInstance {
             ConnectorInstance::Figma(c) => c.provider(),
             ConnectorInstance::Notion(c) => c.provider(),
             ConnectorInstance::Spreadsheet(c) => c.provider(),
+            ConnectorInstance::Plugin(c) => c.provider(),
         }
     }
 
@@ -154,6 +160,7 @@ impl Connector for ConnectorInstance {
             ConnectorInstance::Figma(c) => c.verify().await,
             ConnectorInstance::Notion(c) => c.verify().await,
             ConnectorInstance::Spreadsheet(c) => c.verify().await,
+            ConnectorInstance::Plugin(c) => c.verify().await,
         }
     }
 
@@ -174,6 +181,7 @@ impl Connector for ConnectorInstance {
             ConnectorInstance::Figma(c) => c.fetch_modified(since).await,
             ConnectorInstance::Notion(c) => c.fetch_modified(since).await,
             ConnectorInstance::Spreadsheet(c) => c.fetch_modified(since).await,
+            ConnectorInstance::Plugin(c) => c.fetch_modified(since).await,
         }
     }
 }

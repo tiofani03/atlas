@@ -104,6 +104,10 @@ pub struct ConnectorConfig {
     pub has_header_row: Option<bool>,
     #[serde(default)]
     pub max_rows_per_sheet: Option<usize>,
+    #[serde(default)]
+    pub plugin_command: Option<String>,
+    #[serde(default)]
+    pub plugin_args: Vec<String>,
 }
 
 impl ConnectorConfig {

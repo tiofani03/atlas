@@ -223,6 +223,14 @@ export const api = {
   },
   
   getObjectById: (id: string) => fetchJson<KnowledgeObject>(`${API_BASE}/objects/${encodeURIComponent(id)}`),
+
+  getTimeline: (kind?: string, provider?: string, limit = 100) => {
+    const params = new URLSearchParams();
+    if (kind) params.append('kind', kind);
+    if (provider) params.append('provider', provider);
+    params.append('limit', limit.toString());
+    return fetchJson<{ items: KnowledgeObject[]; total: number }>(`${API_BASE}/timeline?${params.toString()}`);
+  },
   
   clearData: () =>
     fetchJson<{ success: boolean; message: string }>(`${API_BASE}/storage/clear`, {

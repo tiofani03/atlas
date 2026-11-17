@@ -141,6 +141,42 @@ pub async fn get_object_by_id(
 #[derive(Deserialize)]
 pub struct ContextQueryParams {
     pub kind: Option<String>,
+    pub template: Option<String>,
+}
+
+pub async fn export_context_markdown(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(params): Query<ContextQueryParams>,
+) -> impl IntoResponse {
+    let storage = match state.get_storage() {
+        Ok(s) => s,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                err.to_string(),
+            );
+        }
+    };
+
+    let builder = atlas_core::ContextBuilder::new(&storage);
+    let options = atlas_core::ContextOptions::default();
+    match builder.build(params.kind.as_deref(), &id, &options) {
+        Ok(pkg) => {
+            let md = atlas_core::render_context_markdown(&pkg, params.template.as_deref());
+            (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
+                md,
+            )
+        }
+        Err(err) => (
+            StatusCode::NOT_FOUND,
+            [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            err.to_string(),
+        ),
+    }
 }
 
 pub async fn get_context(
